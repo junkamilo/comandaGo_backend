@@ -17,7 +17,11 @@ public interface ProductoService {
     PageResponse<ProductoResponse> listar(Long categoriaId, Boolean activo, Boolean disponible,
                                           Boolean esPromocion, Pageable pageable);
 
-    List<ProductoResponse> listarMenu();
+    List<ProductoResponse> listarMenu(Long categoriaId);
+
+    List<ProductoResponse> listarPromociones();
+
+    List<ProductoResponse> menuDelDia();
 
     ProductoResponse actualizar(Long id, ProductoUpdateRequest request);
 

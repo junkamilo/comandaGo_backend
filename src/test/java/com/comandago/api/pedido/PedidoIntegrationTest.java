@@ -6,9 +6,14 @@ import com.comandago.api.categoria.repository.CategoriaRepository;
 import com.comandago.api.mesa.entity.Mesa;
 import com.comandago.api.mesa.enums.EstadoMesa;
 import com.comandago.api.mesa.repository.MesaRepository;
+import com.comandago.api.pedido.dto.request.DetalleEstadoRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.PedidoCreateRequest;
+import com.comandago.api.pedido.dto.request.PedidoEstadoRequest;
+import com.comandago.api.pedido.enums.EstadoDetalle;
+import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.enums.OrigenPedido;
+import com.comandago.api.pedido.service.DetallePedidoService;
 import com.comandago.api.pedido.service.PedidoService;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
@@ -25,6 +30,9 @@ class PedidoIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private PedidoService pedidoService;
+
+    @Autowired
+    private DetallePedidoService detallePedidoService;
 
     @Autowired
     private CategoriaRepository categoriaRepository;
@@ -65,19 +73,61 @@ class PedidoIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void crearPedido_recalculaTotal() {
-        PedidoCreateRequest request = new PedidoCreateRequest();
-        request.setOrigen(OrigenPedido.MESA_MESERO);
-        request.setMesaId(mesaId);
-        DetallePedidoItemRequest detalle = new DetallePedidoItemRequest();
-        detalle.setProductoId(productoId);
-        detalle.setCantidad(2);
-        request.setDetalles(List.of(detalle));
+    void crearPedido_recalculaTotalConImpoconsumo() {
+        PedidoCreateRequest request = pedidoMesaQr(2);
 
         var response = pedidoService.crear(request);
 
         assertThat(response.numeroPedido()).isNotBlank();
-        assertThat(response.total()).isEqualByComparingTo("30000.00");
+        assertThat(response.subtotal()).isEqualByComparingTo("30000.00");
+        assertThat(response.impuestos()).isEqualByComparingTo("2400.00");
+        assertThat(response.total()).isEqualByComparingTo("32400.00");
         assertThat(response.detalles()).hasSize(1);
+        assertThat(response.mesaNumero()).isEqualTo("T1");
+
+        Mesa mesa = mesaRepository.findById(mesaId).orElseThrow();
+        assertThat(mesa.getEstado()).isEqualTo(EstadoMesa.OCUPADA);
+    }
+
+    @Test
+    void cancelarPedido_liberaMesa() {
+        var creado = pedidoService.crear(pedidoMesaQr(1));
+
+        pedidoService.cancelar(creado.id());
+
+        Mesa mesa = mesaRepository.findById(mesaId).orElseThrow();
+        assertThat(mesa.getEstado()).isEqualTo(EstadoMesa.LIBRE);
+    }
+
+    @Test
+    void detalleListo_promuevePedidoAListo() {
+        var creado = pedidoService.crear(pedidoMesaQr(1));
+        Long detalleId = creado.detalles().get(0).id();
+
+        pedidoService.actualizarEstado(creado.id(), estadoEnPreparacion());
+
+        DetalleEstadoRequest estadoRequest = new DetalleEstadoRequest();
+        estadoRequest.setEstado(EstadoDetalle.LISTO);
+        detallePedidoService.actualizarEstado(creado.id(), detalleId, estadoRequest);
+
+        var actualizado = pedidoService.obtenerPorId(creado.id());
+        assertThat(actualizado.estado()).isEqualTo(EstadoPedido.LISTO);
+    }
+
+    private PedidoCreateRequest pedidoMesaQr(int cantidad) {
+        PedidoCreateRequest request = new PedidoCreateRequest();
+        request.setOrigen(OrigenPedido.MESA_QR);
+        request.setMesaId(mesaId);
+        DetallePedidoItemRequest detalle = new DetallePedidoItemRequest();
+        detalle.setProductoId(productoId);
+        detalle.setCantidad(cantidad);
+        request.setDetalles(List.of(detalle));
+        return request;
+    }
+
+    private PedidoEstadoRequest estadoEnPreparacion() {
+        PedidoEstadoRequest request = new PedidoEstadoRequest();
+        request.setEstado(EstadoPedido.EN_PREPARACION);
+        return request;
     }
 }

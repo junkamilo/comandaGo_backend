@@ -45,8 +45,19 @@ public class ProductoController {
     }
 
     @GetMapping("/menu")
-    public ResponseEntity<ApiResponse<List<ProductoResponse>>> menu() {
-        return ResponseEntity.ok(ApiResponse.ok(productoService.listarMenu()));
+    public ResponseEntity<ApiResponse<List<ProductoResponse>>> menu(
+            @RequestParam(required = false) Long categoriaId) {
+        return ResponseEntity.ok(ApiResponse.ok(productoService.listarMenu(categoriaId)));
+    }
+
+    @GetMapping("/promociones")
+    public ResponseEntity<ApiResponse<List<ProductoResponse>>> promociones() {
+        return ResponseEntity.ok(ApiResponse.ok(productoService.listarPromociones()));
+    }
+
+    @GetMapping("/menu-del-dia")
+    public ResponseEntity<ApiResponse<List<ProductoResponse>>> menuDelDia() {
+        return ResponseEntity.ok(ApiResponse.ok(productoService.menuDelDia()));
     }
 
     @GetMapping

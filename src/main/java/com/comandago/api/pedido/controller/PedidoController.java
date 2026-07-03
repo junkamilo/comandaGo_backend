@@ -61,6 +61,16 @@ public class PedidoController {
                         PageRequest.of(page, size, Sort.by("fechaPedido").descending()))));
     }
 
+    @GetMapping("/activos")
+    public ResponseEntity<ApiResponse<List<PedidoResponse>>> activos() {
+        return ResponseEntity.ok(ApiResponse.ok(pedidoService.listarActivos()));
+    }
+
+    @GetMapping("/mesa/{mesaId}")
+    public ResponseEntity<ApiResponse<List<PedidoResponse>>> porMesa(@PathVariable @Positive Long mesaId) {
+        return ResponseEntity.ok(ApiResponse.ok(pedidoService.listarPorMesa(mesaId)));
+    }
+
     @GetMapping("/cocina")
     public ResponseEntity<ApiResponse<List<PedidoResponse>>> cocina() {
         return ResponseEntity.ok(ApiResponse.ok(pedidoService.listarCocina()));

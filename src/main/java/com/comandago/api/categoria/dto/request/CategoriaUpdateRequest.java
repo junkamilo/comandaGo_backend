@@ -22,4 +22,6 @@ public class CategoriaUpdateRequest {
 
     @Min(value = 0, message = "El orden debe ser mayor o igual a 0")
     private Integer orden;
+
+    private Long categoriaPadreId;
 }

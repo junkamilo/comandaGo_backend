@@ -28,6 +28,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/categorias")
 @RequiredArgsConstructor
@@ -35,6 +37,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class CategoriaController {
 
     private final CategoriaService categoriaService;
+
+    @GetMapping("/menu")
+    public ResponseEntity<ApiResponse<List<CategoriaResponse>>> menu() {
+        return ResponseEntity.ok(ApiResponse.ok(categoriaService.menu()));
+    }
+
+    @GetMapping("/todas")
+    public ResponseEntity<ApiResponse<List<CategoriaResponse>>> listarTodas() {
+        return ResponseEntity.ok(ApiResponse.ok(categoriaService.listarTodas()));
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponse<CategoriaResponse>> crear(@Valid @RequestBody CategoriaCreateRequest request) {

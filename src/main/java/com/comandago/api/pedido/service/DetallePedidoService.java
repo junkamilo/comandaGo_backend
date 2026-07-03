@@ -1,5 +1,6 @@
 package com.comandago.api.pedido.service;
 
+import com.comandago.api.pedido.dto.mapper.PedidoMapper;
 import com.comandago.api.pedido.dto.request.DetalleEstadoRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoUpdateRequest;
@@ -9,7 +10,6 @@ import com.comandago.api.pedido.entity.Pedido;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.repository.DetallePedidoRepository;
 import com.comandago.api.pedido.repository.PedidoRepository;
-import com.comandago.api.pedido.dto.mapper.PedidoMapper;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
 import com.comandago.api.shared.exception.BusinessException;
@@ -29,6 +29,7 @@ public class DetallePedidoService {
     private final PedidoRepository pedidoRepository;
     private final ProductoRepository productoRepository;
     private final PedidoMapper pedidoMapper;
+    private final PedidoTotalesCalculator totalesCalculator;
     private final EntityManager entityManager;
 
     @Transactional
@@ -40,13 +41,14 @@ public class DetallePedidoService {
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(request.getCantidad())
-                .precioUnitario(producto.getPrecioEfectivo())
+                .precioUnitario(producto.getPrecioFinal())
                 .notasPreparacion(request.getNotasPreparacion())
                 .build();
         pedido.getDetalles().add(detalle);
         pedidoRepository.save(pedido);
         entityManager.flush();
         entityManager.refresh(pedido);
+        totalesCalculator.aplicarImpuestos(pedido);
         return pedidoMapper.toDetalleResponse(detalle);
     }
 
@@ -72,6 +74,7 @@ public class DetallePedidoService {
         DetallePedido guardado = detallePedidoRepository.save(detalle);
         entityManager.flush();
         entityManager.refresh(detalle.getPedido());
+        totalesCalculator.aplicarImpuestos(detalle.getPedido());
         return pedidoMapper.toDetalleResponse(guardado);
     }
 
@@ -79,7 +82,16 @@ public class DetallePedidoService {
     public DetallePedidoResponse actualizarEstado(Long pedidoId, Long detalleId, DetalleEstadoRequest request) {
         DetallePedido detalle = buscarDetalle(pedidoId, detalleId);
         detalle.setEstado(request.getEstado());
-        return pedidoMapper.toDetalleResponse(detallePedidoRepository.save(detalle));
+        detallePedidoRepository.save(detalle);
+
+        Pedido pedido = pedidoRepository.findByIdWithDetalles(pedidoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + pedidoId));
+        if (PedidoDetalleEstadoRules.debePromoverPedidoAListo(pedido)) {
+            pedido.setEstado(EstadoPedido.LISTO);
+            pedidoRepository.save(pedido);
+        }
+
+        return pedidoMapper.toDetalleResponse(detalle);
     }
 
     @Transactional
@@ -90,6 +102,7 @@ public class DetallePedidoService {
         detallePedidoRepository.delete(detalle);
         entityManager.flush();
         entityManager.refresh(detalle.getPedido());
+        totalesCalculator.aplicarImpuestos(detalle.getPedido());
     }
 
     private Pedido buscarPedidoEditable(Long pedidoId) {

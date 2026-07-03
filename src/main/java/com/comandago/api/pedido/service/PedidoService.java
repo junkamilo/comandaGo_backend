@@ -23,6 +23,10 @@ public interface PedidoService {
 
     List<PedidoResponse> listarCocina();
 
+    List<PedidoResponse> listarActivos();
+
+    List<PedidoResponse> listarPorMesa(Long mesaId);
+
     PedidoResponse actualizar(Long id, PedidoUpdateRequest request);
 
     PedidoResponse actualizarEstado(Long id, PedidoEstadoRequest request);

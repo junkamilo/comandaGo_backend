@@ -4,6 +4,7 @@ import com.comandago.api.producto.entity.Producto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 
@@ -22,4 +23,17 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     Page<Producto> findByCategoriaIdAndActivoAndDisponible(Long categoriaId, Boolean activo, Boolean disponible, Pageable pageable);
 
     List<Producto> findByActivoTrueAndDisponibleTrueOrderByOrdenAsc();
+
+    List<Producto> findByActivoTrueAndDisponibleTrueAndCategoriaIdOrderByOrdenAsc(Long categoriaId);
+
+    List<Producto> findByEsPromocionTrueAndActivoTrueAndDisponibleTrueOrderByOrdenAsc();
+
+    @Query("""
+            SELECT p FROM Producto p
+            JOIN FETCH p.categoria c
+            LEFT JOIN FETCH c.categoriaPadre
+            WHERE p.activo = true
+            ORDER BY c.orden ASC, p.orden ASC
+            """)
+    List<Producto> findByActivoTrueOrderByCategoriaOrdenAscOrdenAsc();
 }

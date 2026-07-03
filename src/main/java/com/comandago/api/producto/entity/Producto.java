@@ -76,7 +76,7 @@ public class Producto {
     @Column(name = "fecha_actualizacion", insertable = false, updatable = false)
     private OffsetDateTime fechaActualizacion;
 
-    public BigDecimal getPrecioEfectivo() {
+    public BigDecimal getPrecioFinal() {
         if (Boolean.TRUE.equals(esPromocion) && precioPromocion != null) {
             return precioPromocion;
         }

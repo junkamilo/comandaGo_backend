@@ -10,6 +10,7 @@ import com.comandago.api.pedido.dto.request.PedidoUpdateRequest;
 import com.comandago.api.pedido.dto.response.PedidoResponse;
 import com.comandago.api.pedido.entity.DetallePedido;
 import com.comandago.api.pedido.entity.Pedido;
+import com.comandago.api.pedido.enums.EstadoDetalle;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.enums.OrigenPedido;
 import com.comandago.api.pedido.repository.PedidoRepository;
@@ -18,6 +19,8 @@ import com.comandago.api.producto.repository.ProductoRepository;
 import com.comandago.api.shared.exception.BusinessException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
 import com.comandago.api.shared.response.PageResponse;
+import com.comandago.api.shared.security.SecurityUtils;
+import com.comandago.api.shared.security.UsuarioPrincipal;
 import com.comandago.api.shared.util.PaginationUtils;
 import com.comandago.api.usuario.entity.Usuario;
 import com.comandago.api.usuario.repository.UsuarioRepository;
@@ -41,12 +44,16 @@ public class PedidoServiceImpl implements PedidoService {
     private final ProductoRepository productoRepository;
     private final PedidoNumeroGenerator numeroGenerator;
     private final PedidoMapper pedidoMapper;
+    private final PedidoTotalesCalculator totalesCalculator;
+    private final PedidoMesaCoordinator mesaCoordinator;
     private final EntityManager entityManager;
 
     @Override
     @Transactional
     public PedidoResponse crear(PedidoCreateRequest request) {
         validarDomicilio(request);
+        validarMeseroAutenticado(request);
+
         Pedido pedido = Pedido.builder()
                 .numeroPedido(numeroGenerator.generar())
                 .origen(request.getOrigen())
@@ -56,11 +63,14 @@ public class PedidoServiceImpl implements PedidoService {
                 .direccionEntrega(request.getDireccionEntrega())
                 .build();
 
-        if (request.getUsuarioId() != null) {
-            pedido.setUsuario(buscarUsuario(request.getUsuarioId()));
+        if (request.getOrigen() == OrigenPedido.MESA_MESERO) {
+            pedido.setUsuario(resolverMeseroAutenticado());
         }
-        if (request.getMesaId() != null) {
-            pedido.setMesa(buscarMesaActiva(request.getMesaId()));
+
+        if (request.getOrigen() == OrigenPedido.MESA_MESERO || request.getOrigen() == OrigenPedido.MESA_QR) {
+            Mesa mesa = buscarMesaActiva(request.getMesaId());
+            pedido.setMesa(mesa);
+            mesaCoordinator.ocuparMesa(mesa);
         }
 
         for (DetallePedidoItemRequest item : request.getDetalles()) {
@@ -70,6 +80,7 @@ public class PedidoServiceImpl implements PedidoService {
         Pedido guardado = pedidoRepository.save(pedido);
         entityManager.flush();
         entityManager.refresh(guardado);
+        totalesCalculator.aplicarImpuestos(guardado);
         return pedidoMapper.toResponse(recargarConDetalles(guardado.getId()));
     }
 
@@ -96,6 +107,25 @@ public class PedidoServiceImpl implements PedidoService {
             page = pedidoRepository.findAll(pageable);
         }
         return PaginationUtils.toPageResponse(page.map(pedidoMapper::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PedidoResponse> listarActivos() {
+        return pedidoRepository.findByEstadoInOrderByFechaPedidoAsc(PedidoMesaCoordinator.ESTADOS_ACTIVOS)
+                .stream()
+                .map(pedidoMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PedidoResponse> listarPorMesa(Long mesaId) {
+        return pedidoRepository.findByMesaIdAndEstadoInOrderByFechaPedidoAsc(
+                        mesaId, PedidoMesaCoordinator.ESTADOS_ACTIVOS)
+                .stream()
+                .map(pedidoMapper::toResponse)
+                .toList();
     }
 
     @Override
@@ -134,18 +164,25 @@ public class PedidoServiceImpl implements PedidoService {
         Pedido pedido = buscarPorId(id);
         PedidoEstadoTransition.validar(pedido.getEstado(), request.getEstado());
         pedido.setEstado(request.getEstado());
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        Pedido guardado = pedidoRepository.save(pedido);
+        if (request.getEstado() == EstadoPedido.ENTREGADO || request.getEstado() == EstadoPedido.CANCELADO) {
+            mesaCoordinator.liberarMesaSiCorresponde(guardado);
+        }
+        return pedidoMapper.toResponse(guardado);
     }
 
     @Override
     @Transactional
     public PedidoResponse cancelar(Long id) {
-        Pedido pedido = buscarPorId(id);
+        Pedido pedido = recargarConDetalles(id);
         if (!PedidoEstadoTransition.puedeCancelar(pedido.getEstado())) {
             throw new BusinessException("No se puede cancelar un pedido entregado o ya cancelado");
         }
         pedido.setEstado(EstadoPedido.CANCELADO);
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        pedido.getDetalles().forEach(d -> d.setEstado(EstadoDetalle.CANCELADO));
+        Pedido guardado = pedidoRepository.save(pedido);
+        mesaCoordinator.liberarMesaSiCorresponde(guardado);
+        return pedidoMapper.toResponse(guardado);
     }
 
     private DetallePedido crearDetalle(Pedido pedido, DetallePedidoItemRequest item) {
@@ -160,7 +197,7 @@ public class PedidoServiceImpl implements PedidoService {
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(item.getCantidad())
-                .precioUnitario(producto.getPrecioEfectivo())
+                .precioUnitario(producto.getPrecioFinal())
                 .notasPreparacion(item.getNotasPreparacion())
                 .build();
     }
@@ -184,9 +221,19 @@ public class PedidoServiceImpl implements PedidoService {
         return mesa;
     }
 
-    private Usuario buscarUsuario(Long id) {
-        return usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id: " + id));
+    private Usuario resolverMeseroAutenticado() {
+        UsuarioPrincipal principal = SecurityUtils.currentUserOrNull();
+        if (principal == null) {
+            throw new BusinessException("Se requiere autenticación para pedidos del mesero");
+        }
+        return usuarioRepository.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id: " + principal.getId()));
+    }
+
+    private void validarMeseroAutenticado(PedidoCreateRequest request) {
+        if (request.getOrigen() == OrigenPedido.MESA_MESERO && SecurityUtils.currentUserOrNull() == null) {
+            throw new BusinessException("Se requiere autenticación para pedidos del mesero");
+        }
     }
 
     private void validarDomicilio(PedidoCreateRequest request) {

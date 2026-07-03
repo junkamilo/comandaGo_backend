@@ -2,6 +2,8 @@ package com.comandago.api.categoria.dto.response;
 
 import lombok.Builder;
 
+import java.util.List;
+
 @Builder
 public record CategoriaResponse(
         Long id,
@@ -9,6 +11,9 @@ public record CategoriaResponse(
         String descripcion,
         String imagenUrl,
         Integer orden,
-        Boolean activo
+        Boolean activo,
+        Long categoriaPadreId,
+        String categoriaPadreNombre,
+        List<CategoriaResponse> subcategorias
 ) {
 }

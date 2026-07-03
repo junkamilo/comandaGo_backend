@@ -16,6 +16,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -48,7 +50,13 @@ class CategoriaControllerTest {
     @WithMockUser(roles = "ADMIN")
     void crear_retorna201() throws Exception {
         when(categoriaService.crear(any())).thenReturn(
-                CategoriaResponse.builder().id(1L).nombre("Bebidas").orden(0).activo(true).build());
+                CategoriaResponse.builder()
+                        .id(1L)
+                        .nombre("Bebidas")
+                        .orden(0)
+                        .activo(true)
+                        .subcategorias(List.of())
+                        .build());
 
         mockMvc.perform(post("/api/v1/categorias")
                         .with(csrf())
@@ -63,6 +71,30 @@ class CategoriaControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void crear_conCategoriaPadreId_retorna201() throws Exception {
+        when(categoriaService.crear(any())).thenReturn(
+                CategoriaResponse.builder()
+                        .id(2L)
+                        .nombre("Cervezas")
+                        .orden(0)
+                        .activo(true)
+                        .categoriaPadreId(1L)
+                        .categoriaPadreNombre("Bebidas")
+                        .subcategorias(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/v1/categorias")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre":"Cervezas","orden":0,"categoriaPadreId":1}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.categoriaPadreId").value(1));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void crear_sinNombre_retorna400() throws Exception {
         mockMvc.perform(post("/api/v1/categorias")
                         .with(csrf())
@@ -72,6 +104,33 @@ class CategoriaControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void menu_retornaArbol() throws Exception {
+        CategoriaResponse hija = CategoriaResponse.builder()
+                .id(2L)
+                .nombre("Cervezas")
+                .orden(0)
+                .activo(true)
+                .categoriaPadreId(1L)
+                .categoriaPadreNombre("Bebidas")
+                .subcategorias(List.of())
+                .build();
+        CategoriaResponse padre = CategoriaResponse.builder()
+                .id(1L)
+                .nombre("Bebidas")
+                .orden(0)
+                .activo(true)
+                .subcategorias(List.of(hija))
+                .build();
+
+        when(categoriaService.menu()).thenReturn(List.of(padre));
+
+        mockMvc.perform(get("/api/v1/categorias/menu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].nombre").value("Bebidas"))
+                .andExpect(jsonPath("$.data[0].subcategorias[0].nombre").value("Cervezas"));
     }
 
     @Test

@@ -7,6 +7,8 @@ import com.comandago.api.mesa.entity.Mesa;
 import com.comandago.api.mesa.enums.EstadoMesa;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 public class MesaMapper {
 
@@ -40,6 +42,10 @@ public class MesaMapper {
     }
 
     public MesaResponse toResponse(Mesa mesa) {
+        return toResponse(mesa, List.of());
+    }
+
+    public MesaResponse toResponse(Mesa mesa, List<String> mesasDelGrupo) {
         return MesaResponse.builder()
                 .id(mesa.getId())
                 .numero(mesa.getNumero())
@@ -48,6 +54,8 @@ public class MesaMapper {
                 .qrToken(mesa.getQrToken())
                 .estado(mesa.getEstado())
                 .activo(mesa.getActivo())
+                .grupoId(mesa.getGrupoId())
+                .mesasDelGrupo(mesasDelGrupo)
                 .build();
     }
 }

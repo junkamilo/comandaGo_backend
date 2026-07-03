@@ -18,6 +18,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class CategoriaServiceImpl implements CategoriaService {
@@ -27,12 +29,33 @@ public class CategoriaServiceImpl implements CategoriaService {
     private final CategoriaMapper categoriaMapper;
 
     @Override
+    @Transactional(readOnly = true)
+    public List<CategoriaResponse> menu() {
+        return categoriaRepository.findByActivoTrueAndCategoriaPadreIsNullOrderByOrdenAsc()
+                .stream()
+                .map(padre -> categoriaMapper.toResponseConHijas(
+                        padre,
+                        categoriaRepository.findByActivoTrueAndCategoriaPadreIdOrderByOrdenAsc(padre.getId())))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CategoriaResponse> listarTodas() {
+        return categoriaRepository.findAllByOrderByOrdenAsc()
+                .stream()
+                .map(categoriaMapper::toResponse)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public CategoriaResponse crear(CategoriaCreateRequest request) {
         if (categoriaRepository.existsByNombreIgnoreCaseAndActivoTrue(request.getNombre())) {
             throw new ConflictException("Ya existe una categoría activa con ese nombre");
         }
         Categoria categoria = categoriaMapper.toEntity(request);
+        categoria.setCategoriaPadre(resolverPadre(categoria, request.getCategoriaPadreId()));
         return categoriaMapper.toResponse(categoriaRepository.save(categoria));
     }
 
@@ -68,6 +91,9 @@ public class CategoriaServiceImpl implements CategoriaService {
             throw new ConflictException("Ya existe otra categoría activa con ese nombre");
         }
         categoriaMapper.updateEntity(categoria, request);
+        if (request.getCategoriaPadreId() != null) {
+            categoria.setCategoriaPadre(resolverPadre(categoria, request.getCategoriaPadreId()));
+        }
         return categoriaMapper.toResponse(categoriaRepository.save(categoria));
     }
 
@@ -86,6 +112,10 @@ public class CategoriaServiceImpl implements CategoriaService {
         if (productoRepository.existsByCategoriaIdAndActivoTrue(id)) {
             throw new ConflictException("No se puede eliminar la categoría porque tiene productos activos");
         }
+        if (categoriaRepository.existsByCategoriaPadreIdAndActivoTrue(id)) {
+            throw new ConflictException(
+                    "No puedes desactivar una categoría con subcategorías activas. Desactiva o reasigna las hijas primero.");
+        }
         categoria.setActivo(false);
         categoriaRepository.save(categoria);
     }
@@ -95,9 +125,31 @@ public class CategoriaServiceImpl implements CategoriaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada con id: " + id));
     }
 
+    private Categoria resolverPadre(Categoria hija, Long padreId) {
+        if (padreId == null) {
+            return null;
+        }
+        if (hija.getId() != null && hija.getId().equals(padreId)) {
+            throw new BusinessException("Una categoría no puede ser su propio padre");
+        }
+        if (hija.getId() != null && categoriaRepository.existsByCategoriaPadreIdAndActivoTrue(hija.getId())) {
+            throw new BusinessException("Una categoría con subcategorías no puede convertirse en subcategoría");
+        }
+        Categoria padre = categoriaRepository.findById(padreId)
+                .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada con id: " + padreId));
+        if (!Boolean.TRUE.equals(padre.getActivo())) {
+            throw new BusinessException("La categoría padre no está activa");
+        }
+        if (padre.getCategoriaPadre() != null) {
+            throw new BusinessException("No se permiten subcategorías de más de 2 niveles");
+        }
+        return padre;
+    }
+
     private void validarAlMenosUnCampo(CategoriaUpdateRequest request) {
         if (request.getNombre() == null && request.getDescripcion() == null
-                && request.getImagenUrl() == null && request.getOrden() == null) {
+                && request.getImagenUrl() == null && request.getOrden() == null
+                && request.getCategoriaPadreId() == null) {
             throw new BusinessException("Debe enviar al menos un campo para actualizar");
         }
     }

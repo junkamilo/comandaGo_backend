@@ -47,4 +47,7 @@ public class Mesa {
     @Column(nullable = false)
     @Builder.Default
     private Boolean activo = true;
+
+    @Column(name = "grupo_id", length = 36)
+    private String grupoId;
 }

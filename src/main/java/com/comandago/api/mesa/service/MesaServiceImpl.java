@@ -20,8 +20,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -55,7 +61,7 @@ public class MesaServiceImpl implements MesaService {
     @Override
     @Transactional(readOnly = true)
     public MesaResponse obtenerPorId(Long id) {
-        return mesaMapper.toResponse(buscarPorId(id));
+        return conGrupo(buscarPorId(id));
     }
 
     @Override
@@ -63,7 +69,7 @@ public class MesaServiceImpl implements MesaService {
     public MesaResponse obtenerPorQrToken(String token) {
         Mesa mesa = mesaRepository.findByQrToken(token)
                 .orElseThrow(() -> new ResourceNotFoundException("Mesa no encontrada para el token QR"));
-        return mesaMapper.toResponse(mesa);
+        return conGrupo(mesa);
     }
 
     @Override
@@ -80,6 +86,22 @@ public class MesaServiceImpl implements MesaService {
             page = mesaRepository.findAll(pageable);
         }
         return PaginationUtils.toPageResponse(page.map(mesaMapper::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MesaResponse> listarPiso() {
+        List<Mesa> mesas = mesaRepository.findByActivoTrueOrderByNumeroAsc();
+        return conGrupoBatch(mesas);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MesaResponse> listarLibres() {
+        return mesaRepository.findByActivoTrueAndEstadoOrderByNumeroAsc(EstadoMesa.LIBRE)
+                .stream()
+                .map(mesaMapper::toResponse)
+                .toList();
     }
 
     @Override
@@ -108,18 +130,117 @@ public class MesaServiceImpl implements MesaService {
 
     @Override
     @Transactional
+    public List<MesaResponse> agrupar(List<Long> mesaIds) {
+        if (mesaIds == null || mesaIds.size() < 2) {
+            throw new BusinessException("Se necesitan al menos 2 mesas para agrupar");
+        }
+
+        Set<Long> idsUnicos = new HashSet<>(mesaIds);
+        if (idsUnicos.size() != mesaIds.size()) {
+            throw new BusinessException("No puedes repetir la misma mesa en el grupo");
+        }
+
+        List<Mesa> mesas = mesaRepository.findAllById(mesaIds);
+        if (mesas.size() != mesaIds.size()) {
+            throw new ResourceNotFoundException("Una o más mesas no existen");
+        }
+
+        for (Mesa mesa : mesas) {
+            if (!Boolean.TRUE.equals(mesa.getActivo())) {
+                throw new BusinessException("La mesa " + mesa.getNumero() + " está inactiva");
+            }
+            if (mesa.getGrupoId() != null) {
+                throw new BusinessException(
+                        "La mesa " + mesa.getNumero() + " ya está en un grupo. Sepárala primero.");
+            }
+        }
+
+        String grupoId = UUID.randomUUID().toString();
+        for (Mesa mesa : mesas) {
+            mesa.setGrupoId(grupoId);
+            mesa.setEstado(EstadoMesa.OCUPADA);
+        }
+        List<Mesa> guardadas = mesaRepository.saveAll(mesas);
+        return conGrupoBatch(guardadas);
+    }
+
+    @Override
+    @Transactional
+    public void desagrupar(String grupoId) {
+        List<Mesa> mesas = mesaRepository.findByGrupoId(grupoId);
+        if (mesas.isEmpty()) {
+            throw new ResourceNotFoundException("Grupo no encontrado: " + grupoId);
+        }
+        for (Mesa mesa : mesas) {
+            mesa.setGrupoId(null);
+            mesa.setEstado(EstadoMesa.LIBRE);
+        }
+        mesaRepository.saveAll(mesas);
+    }
+
+    @Override
+    @Transactional
     public void eliminar(Long id) {
         Mesa mesa = buscarPorId(id);
+        if (mesa.getEstado() == EstadoMesa.OCUPADA) {
+            throw new BusinessException("No puedes desactivar una mesa que está ocupada");
+        }
+        if (mesa.getGrupoId() != null) {
+            throw new BusinessException("Separa el grupo antes de desactivar esta mesa");
+        }
         if (pedidoRepository.existsByMesaIdAndEstadoIn(id, ESTADOS_PEDIDO_ACTIVOS)) {
             throw new ConflictException("No se puede inactivar la mesa porque tiene pedidos activos");
         }
         mesa.setActivo(false);
+        mesa.setEstado(EstadoMesa.INACTIVA);
         mesaRepository.save(mesa);
     }
 
     private Mesa buscarPorId(Long id) {
         return mesaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Mesa no encontrada con id: " + id));
+    }
+
+    private MesaResponse conGrupo(Mesa mesa) {
+        if (mesa.getGrupoId() == null) {
+            return mesaMapper.toResponse(mesa);
+        }
+
+        List<String> otrasDelGrupo = mesaRepository.findByGrupoId(mesa.getGrupoId())
+                .stream()
+                .filter(otra -> !otra.getId().equals(mesa.getId()))
+                .map(Mesa::getNumero)
+                .toList();
+        return mesaMapper.toResponse(mesa, otrasDelGrupo);
+    }
+
+    private List<MesaResponse> conGrupoBatch(List<Mesa> mesas) {
+        Set<String> grupoIds = mesas.stream()
+                .map(Mesa::getGrupoId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
+
+        Map<String, List<Mesa>> mesasPorGrupo = new HashMap<>();
+        if (!grupoIds.isEmpty()) {
+            for (Mesa mesaGrupo : mesaRepository.findByGrupoIdIn(grupoIds)) {
+                mesasPorGrupo.computeIfAbsent(mesaGrupo.getGrupoId(), ignored -> new ArrayList<>())
+                        .add(mesaGrupo);
+            }
+        }
+
+        return mesas.stream()
+                .map(mesa -> {
+                    if (mesa.getGrupoId() == null) {
+                        return mesaMapper.toResponse(mesa);
+                    }
+                    List<String> otrasDelGrupo = mesasPorGrupo.getOrDefault(mesa.getGrupoId(), List.of())
+                            .stream()
+                            .filter(otra -> !otra.getId().equals(mesa.getId()))
+                            .map(Mesa::getNumero)
+                            .toList();
+                    return mesaMapper.toResponse(mesa, otrasDelGrupo);
+                })
+                .toList();
     }
 
     private void validarAlMenosUnCampo(MesaUpdateRequest request) {

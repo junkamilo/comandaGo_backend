@@ -1,5 +1,6 @@
 package com.comandago.api.mesa.controller;
 
+import com.comandago.api.mesa.dto.request.MesaAgruparRequest;
 import com.comandago.api.mesa.dto.request.MesaCreateRequest;
 import com.comandago.api.mesa.dto.request.MesaEstadoRequest;
 import com.comandago.api.mesa.dto.request.MesaUpdateRequest;
@@ -30,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/mesas")
 @RequiredArgsConstructor
@@ -42,6 +45,28 @@ public class MesaController {
     public ResponseEntity<ApiResponse<MesaResponse>> crear(@Valid @RequestBody MesaCreateRequest request) {
         MesaResponse response = mesaService.crear(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Mesa creada", response));
+    }
+
+    @GetMapping("/piso")
+    public ResponseEntity<ApiResponse<List<MesaResponse>>> piso() {
+        return ResponseEntity.ok(ApiResponse.ok(mesaService.listarPiso()));
+    }
+
+    @GetMapping("/libres")
+    public ResponseEntity<ApiResponse<List<MesaResponse>>> libres() {
+        return ResponseEntity.ok(ApiResponse.ok(mesaService.listarLibres()));
+    }
+
+    @PostMapping("/agrupar")
+    public ResponseEntity<ApiResponse<List<MesaResponse>>> agrupar(
+            @Valid @RequestBody MesaAgruparRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Mesas agrupadas", mesaService.agrupar(request.getMesaIds())));
+    }
+
+    @DeleteMapping("/grupo/{grupoId}")
+    public ResponseEntity<ApiResponse<Void>> desagrupar(@PathVariable @NotBlank String grupoId) {
+        mesaService.desagrupar(grupoId);
+        return ResponseEntity.ok(ApiResponse.ok("Mesas separadas", null));
     }
 
     @GetMapping

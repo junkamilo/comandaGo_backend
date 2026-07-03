@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -31,7 +32,8 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public ProductoResponse crear(ProductoCreateRequest request) {
-        Categoria categoria = buscarCategoriaActiva(request.getCategoriaId());
+        validarPromocion(request.getEsPromocion(), request.getPrecio(), request.getPrecioPromocion());
+        Categoria categoria = resolverCategoriaHoja(request.getCategoriaId());
         Producto producto = Producto.builder().categoria(categoria).build();
         productoMapper.applyCreate(producto, request);
         return productoMapper.toResponse(productoRepository.save(producto));
@@ -62,8 +64,27 @@ public class ProductoServiceImpl implements ProductoService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProductoResponse> listarMenu() {
-        return productoRepository.findByActivoTrueAndDisponibleTrueOrderByOrdenAsc().stream()
+    public List<ProductoResponse> listarMenu(Long categoriaId) {
+        List<Producto> productos = categoriaId != null
+                ? productoRepository.findByActivoTrueAndDisponibleTrueAndCategoriaIdOrderByOrdenAsc(categoriaId)
+                : productoRepository.findByActivoTrueAndDisponibleTrueOrderByOrdenAsc();
+        return productos.stream().map(productoMapper::toResponse).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductoResponse> listarPromociones() {
+        return productoRepository.findByEsPromocionTrueAndActivoTrueAndDisponibleTrueOrderByOrdenAsc()
+                .stream()
+                .map(productoMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductoResponse> menuDelDia() {
+        return productoRepository.findByActivoTrueOrderByCategoriaOrdenAscOrdenAsc()
+                .stream()
                 .map(productoMapper::toResponse)
                 .toList();
     }
@@ -74,9 +95,10 @@ public class ProductoServiceImpl implements ProductoService {
         validarAlMenosUnCampo(request);
         Producto producto = buscarPorId(id);
         if (request.getCategoriaId() != null) {
-            producto.setCategoria(buscarCategoriaActiva(request.getCategoriaId()));
+            producto.setCategoria(resolverCategoriaHoja(request.getCategoriaId()));
         }
         productoMapper.applyUpdate(producto, request);
+        validarPromocion(producto.getEsPromocion(), producto.getPrecio(), producto.getPrecioPromocion());
         return productoMapper.toResponse(productoRepository.save(producto));
     }
 
@@ -84,6 +106,9 @@ public class ProductoServiceImpl implements ProductoService {
     @Transactional
     public ProductoResponse actualizarDisponibilidad(Long id, Boolean disponible) {
         Producto producto = buscarPorId(id);
+        if (!Boolean.TRUE.equals(producto.getActivo())) {
+            throw new BusinessException("No puedes cambiar la disponibilidad de un producto inactivo");
+        }
         producto.setDisponible(disponible);
         return productoMapper.toResponse(productoRepository.save(producto));
     }
@@ -101,13 +126,29 @@ public class ProductoServiceImpl implements ProductoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con id: " + id));
     }
 
-    private Categoria buscarCategoriaActiva(Long id) {
-        Categoria categoria = categoriaRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada con id: " + id));
+    private Categoria resolverCategoriaHoja(Long categoriaId) {
+        Categoria categoria = categoriaRepository.findById(categoriaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada con id: " + categoriaId));
         if (!Boolean.TRUE.equals(categoria.getActivo())) {
-            throw new BusinessException("La categoría no está activa");
+            throw new BusinessException("No puedes asignar el producto a una categoría inactiva");
+        }
+        if (categoriaRepository.existsByCategoriaPadreId(categoriaId)) {
+            throw new BusinessException(
+                    "Esta categoría tiene subcategorías. Asigna el producto a una subcategoría, no a la categoría padre.");
         }
         return categoria;
+    }
+
+    private void validarPromocion(Boolean esPromocion, BigDecimal precio, BigDecimal precioPromocion) {
+        if (!Boolean.TRUE.equals(esPromocion)) {
+            return;
+        }
+        if (precioPromocion == null) {
+            throw new BusinessException("Un producto en promoción requiere precio de promoción");
+        }
+        if (precioPromocion.compareTo(precio) >= 0) {
+            throw new BusinessException("El precio de promoción debe ser menor al precio normal");
+        }
     }
 
     private void validarAlMenosUnCampo(ProductoUpdateRequest request) {

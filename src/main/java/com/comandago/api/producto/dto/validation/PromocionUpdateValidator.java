@@ -11,6 +11,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.math.BigDecimal;
 
 @Documented
 @Constraint(validatedBy = PromocionUpdateValidator.Validator.class)
@@ -31,7 +32,12 @@ public @interface PromocionUpdateValidator {
             if (!Boolean.TRUE.equals(request.getEsPromocion())) {
                 return true;
             }
-            return request.getPrecioPromocion() != null;
+            BigDecimal precioPromocion = request.getPrecioPromocion();
+            if (precioPromocion == null) {
+                return false;
+            }
+            BigDecimal precio = request.getPrecio();
+            return precio == null || precioPromocion.compareTo(precio) < 0;
         }
     }
 }
