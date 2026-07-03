@@ -1,0 +1,37 @@
+package com.comandago.api.producto.dto.validation;
+
+import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
+import jakarta.validation.Constraint;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+import jakarta.validation.Payload;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Documented
+@Constraint(validatedBy = PromocionUpdateValidator.Validator.class)
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface PromocionUpdateValidator {
+
+    String message() default "Si el producto está en promoción, el precio de promoción es obligatorio";
+
+    Class<?>[] groups() default {};
+
+    Class<? extends Payload>[] payload() default {};
+
+    class Validator implements ConstraintValidator<PromocionUpdateValidator, ProductoUpdateRequest> {
+
+        @Override
+        public boolean isValid(ProductoUpdateRequest request, ConstraintValidatorContext context) {
+            if (!Boolean.TRUE.equals(request.getEsPromocion())) {
+                return true;
+            }
+            return request.getPrecioPromocion() != null;
+        }
+    }
+}

@@ -1,0 +1,16 @@
+# Copiar a application-local.properties (gitignored) para desarrollo local.
+# Los nombres deben coincidir con ${...} en application.properties.
+
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/comandago
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=your-password
+SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+
+APP_JWT_SECRET=your-local-jwt-secret-minimum-32-characters-long
+APP_JWT_EXPIRATION_MS=86400000
+APP_JWT_REFRESH_EXPIRATION_MS=604800000
+
+APP_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+APP_RATE_LIMIT_LOGIN_MAX=5
+APP_RATE_LIMIT_LOGIN_WINDOW=60
