@@ -1,6 +1,7 @@
 package com.comandago.api.categoria.service;
 
 import com.comandago.api.categoria.dto.request.CategoriaCreateRequest;
+import com.comandago.api.categoria.dto.request.CategoriaReordenarRequest;
 import com.comandago.api.categoria.dto.request.CategoriaUpdateRequest;
 import com.comandago.api.categoria.dto.response.CategoriaResponse;
 import com.comandago.api.shared.response.PageResponse;
@@ -25,4 +26,6 @@ public interface CategoriaService {
     CategoriaResponse actualizarActivo(Long id, Boolean activo);
 
     void eliminar(Long id);
+
+    void reordenar(CategoriaReordenarRequest request);
 }

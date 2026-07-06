@@ -2,6 +2,7 @@ package com.comandago.api.categoria.service;
 
 import com.comandago.api.categoria.dto.mapper.CategoriaMapper;
 import com.comandago.api.categoria.dto.request.CategoriaCreateRequest;
+import com.comandago.api.categoria.dto.request.CategoriaReordenarRequest;
 import com.comandago.api.categoria.dto.request.CategoriaUpdateRequest;
 import com.comandago.api.categoria.dto.response.CategoriaResponse;
 import com.comandago.api.categoria.entity.Categoria;
@@ -12,6 +13,8 @@ import com.comandago.api.shared.exception.ConflictException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
 import com.comandago.api.shared.response.PageResponse;
 import com.comandago.api.shared.util.PaginationUtils;
+import com.comandago.api.storage.StorageBucket;
+import com.comandago.api.storage.service.SupabaseStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +34,7 @@ public class CategoriaServiceImpl implements CategoriaService {
     private final CategoriaRepository categoriaRepository;
     private final ProductoRepository productoRepository;
     private final CategoriaMapper categoriaMapper;
+    private final SupabaseStorageService supabaseStorageService;
 
     @Override
     @Transactional(readOnly = true)
@@ -55,7 +63,9 @@ public class CategoriaServiceImpl implements CategoriaService {
             throw new ConflictException("Ya existe una categoría activa con ese nombre");
         }
         Categoria categoria = categoriaMapper.toEntity(request);
+        categoria.setImagenUrl(resolverImagenUrlParaCreacion(request.getImagenUrl()));
         categoria.setCategoriaPadre(resolverPadre(categoria, request.getCategoriaPadreId()));
+        categoria.setOrden(categoriaRepository.findMaxOrdenEnNivel(request.getCategoriaPadreId()) + 1);
         return categoriaMapper.toResponse(categoriaRepository.save(categoria));
     }
 
@@ -90,6 +100,9 @@ public class CategoriaServiceImpl implements CategoriaService {
                 && categoriaRepository.existsByNombreIgnoreCaseAndActivoTrueAndIdNot(request.getNombre(), id)) {
             throw new ConflictException("Ya existe otra categoría activa con ese nombre");
         }
+        if (request.getImagenUrl() != null) {
+            aplicarImagenUrlEnActualizacion(categoria, request.getImagenUrl());
+        }
         categoriaMapper.updateEntity(categoria, request);
         if (request.getCategoriaPadreId() != null) {
             categoria.setCategoriaPadre(resolverPadre(categoria, request.getCategoriaPadreId()));
@@ -120,6 +133,81 @@ public class CategoriaServiceImpl implements CategoriaService {
         categoriaRepository.save(categoria);
     }
 
+    @Override
+    @Transactional
+    public void reordenar(CategoriaReordenarRequest request) {
+        Long padreId = request.categoriaPadreId();
+        long activasEnNivel = padreId == null
+                ? categoriaRepository.countByActivoTrueAndCategoriaPadreIsNull()
+                : categoriaRepository.countByActivoTrueAndCategoriaPadreId(padreId);
+
+        if (request.ids().size() != activasEnNivel) {
+            throw new BusinessException(
+                    "Debe incluir todas las categorías activas del nivel para reordenar");
+        }
+
+        List<Categoria> categorias = categoriaRepository.findAllById(request.ids());
+        if (categorias.size() != request.ids().size()) {
+            throw new ResourceNotFoundException("Una o más categorías no existen");
+        }
+
+        Map<Long, Categoria> porId = categorias.stream()
+                .collect(Collectors.toMap(Categoria::getId, Function.identity()));
+
+        for (int i = 0; i < request.ids().size(); i++) {
+            Long id = request.ids().get(i);
+            Categoria categoria = porId.get(id);
+            if (categoria == null) {
+                throw new ResourceNotFoundException("Categoría no encontrada con id: " + id);
+            }
+            if (!Boolean.TRUE.equals(categoria.getActivo())) {
+                throw new BusinessException("Solo se pueden reordenar categorías activas");
+            }
+            Long padreActual = categoria.getCategoriaPadre() != null
+                    ? categoria.getCategoriaPadre().getId()
+                    : null;
+            if (!Objects.equals(padreId, padreActual)) {
+                throw new BusinessException("Todas las categorías deben pertenecer al mismo nivel");
+            }
+            categoria.setOrden(i);
+        }
+
+        categoriaRepository.saveAll(categorias);
+    }
+
+    private String resolverImagenUrlParaCreacion(String imagenUrl) {
+        if (imagenUrl == null || imagenUrl.isBlank()) {
+            return null;
+        }
+        String normalizada = imagenUrl.trim();
+        supabaseStorageService.validarUrlDelBucket(StorageBucket.CATEGORIAS, normalizada);
+        return normalizada;
+    }
+
+    private void aplicarImagenUrlEnActualizacion(Categoria categoria, String imagenUrl) {
+        String anterior = categoria.getImagenUrl();
+
+        if (imagenUrl.isBlank()) {
+            eliminarImagenAnteriorSiCorresponde(anterior);
+            categoria.setImagenUrl(null);
+            return;
+        }
+
+        String nueva = imagenUrl.trim();
+        supabaseStorageService.validarUrlDelBucket(StorageBucket.CATEGORIAS, nueva);
+
+        if (!Objects.equals(anterior, nueva)) {
+            eliminarImagenAnteriorSiCorresponde(anterior);
+            categoria.setImagenUrl(nueva);
+        }
+    }
+
+    private void eliminarImagenAnteriorSiCorresponde(String imagenUrl) {
+        if (imagenUrl != null && supabaseStorageService.esUrlDelBucket(StorageBucket.CATEGORIAS, imagenUrl)) {
+            supabaseStorageService.eliminarPorPublicUrl(StorageBucket.CATEGORIAS, imagenUrl);
+        }
+    }
+
     private Categoria buscarPorId(Long id) {
         return categoriaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada con id: " + id));
@@ -148,7 +236,7 @@ public class CategoriaServiceImpl implements CategoriaService {
 
     private void validarAlMenosUnCampo(CategoriaUpdateRequest request) {
         if (request.getNombre() == null && request.getDescripcion() == null
-                && request.getImagenUrl() == null && request.getOrden() == null
+                && request.getImagenUrl() == null
                 && request.getCategoriaPadreId() == null) {
             throw new BusinessException("Debe enviar al menos un campo para actualizar");
         }

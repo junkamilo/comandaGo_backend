@@ -2,6 +2,7 @@ package com.comandago.api.categoria.controller;
 
 import com.comandago.api.categoria.dto.request.CategoriaActivoRequest;
 import com.comandago.api.categoria.dto.request.CategoriaCreateRequest;
+import com.comandago.api.categoria.dto.request.CategoriaReordenarRequest;
 import com.comandago.api.categoria.dto.request.CategoriaUpdateRequest;
 import com.comandago.api.categoria.dto.response.CategoriaResponse;
 import com.comandago.api.categoria.service.CategoriaService;
@@ -68,6 +69,12 @@ public class CategoriaController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<CategoriaResponse>> obtener(@PathVariable @Positive Long id) {
         return ResponseEntity.ok(ApiResponse.ok(categoriaService.obtenerPorId(id)));
+    }
+
+    @PutMapping("/reordenar")
+    public ResponseEntity<ApiResponse<Void>> reordenar(@Valid @RequestBody CategoriaReordenarRequest request) {
+        categoriaService.reordenar(request);
+        return ResponseEntity.ok(ApiResponse.ok("Orden actualizado", null));
     }
 
     @PutMapping("/{id}")

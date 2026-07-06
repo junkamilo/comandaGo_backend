@@ -9,6 +9,8 @@ import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
 import com.comandago.api.shared.exception.BusinessException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
+import com.comandago.api.storage.StorageBucket;
+import com.comandago.api.storage.service.SupabaseStorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +40,9 @@ class ProductoServiceImplTest {
 
     @Mock
     private ProductoMapper productoMapper;
+
+    @Mock
+    private SupabaseStorageService supabaseStorageService;
 
     @InjectMocks
     private ProductoServiceImpl productoService;
@@ -205,5 +211,25 @@ class ProductoServiceImplTest {
 
         assertThatThrownBy(() -> productoService.crear(request))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void crear_imagenUrlExterna_lanzaBusinessException() {
+        ProductoCreateRequest request = new ProductoCreateRequest();
+        request.setCategoriaId(2L);
+        request.setNombre("Bandeja");
+        request.setPrecio(new BigDecimal("25000"));
+        request.setImagenUrl("https://evil.com/foto.webp");
+
+        Categoria hoja = Categoria.builder().id(2L).activo(true).build();
+        when(categoriaRepository.findById(2L)).thenReturn(Optional.of(hoja));
+        when(categoriaRepository.existsByCategoriaPadreId(2L)).thenReturn(false);
+        org.mockito.Mockito.doThrow(new BusinessException("URL inválida"))
+                .when(supabaseStorageService)
+                .validarUrlDelBucket(eq(StorageBucket.PRODUCTOS), eq("https://evil.com/foto.webp"));
+
+        assertThatThrownBy(() -> productoService.crear(request))
+                .isInstanceOf(BusinessException.class);
+        verify(productoRepository, never()).save(any());
     }
 }

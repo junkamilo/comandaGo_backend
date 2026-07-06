@@ -15,8 +15,6 @@ public class CategoriaMapper {
         return Categoria.builder()
                 .nombre(request.getNombre())
                 .descripcion(request.getDescripcion())
-                .imagenUrl(request.getImagenUrl())
-                .orden(request.getOrden())
                 .activo(true)
                 .build();
     }
@@ -27,12 +25,6 @@ public class CategoriaMapper {
         }
         if (request.getDescripcion() != null) {
             categoria.setDescripcion(request.getDescripcion());
-        }
-        if (request.getImagenUrl() != null) {
-            categoria.setImagenUrl(request.getImagenUrl());
-        }
-        if (request.getOrden() != null) {
-            categoria.setOrden(request.getOrden());
         }
     }
 

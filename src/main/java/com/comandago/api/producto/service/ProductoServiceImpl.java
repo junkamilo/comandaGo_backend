@@ -12,6 +12,8 @@ import com.comandago.api.shared.exception.BusinessException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
 import com.comandago.api.shared.response.PageResponse;
 import com.comandago.api.shared.util.PaginationUtils;
+import com.comandago.api.storage.StorageBucket;
+import com.comandago.api.storage.service.SupabaseStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +31,7 @@ public class ProductoServiceImpl implements ProductoService {
     private final ProductoRepository productoRepository;
     private final CategoriaRepository categoriaRepository;
     private final ProductoMapper productoMapper;
+    private final SupabaseStorageService supabaseStorageService;
 
     @Override
     @Transactional
@@ -36,6 +40,7 @@ public class ProductoServiceImpl implements ProductoService {
         Categoria categoria = resolverCategoriaHoja(request.getCategoriaId());
         Producto producto = Producto.builder().categoria(categoria).build();
         productoMapper.applyCreate(producto, request);
+        producto.setImagenUrl(resolverImagenUrlParaCreacion(request.getImagenUrl()));
         return productoMapper.toResponse(productoRepository.save(producto));
     }
 
@@ -97,6 +102,9 @@ public class ProductoServiceImpl implements ProductoService {
         if (request.getCategoriaId() != null) {
             producto.setCategoria(resolverCategoriaHoja(request.getCategoriaId()));
         }
+        if (request.getImagenUrl() != null) {
+            aplicarImagenUrlEnActualizacion(producto, request.getImagenUrl());
+        }
         productoMapper.applyUpdate(producto, request);
         validarPromocion(producto.getEsPromocion(), producto.getPrecio(), producto.getPrecioPromocion());
         return productoMapper.toResponse(productoRepository.save(producto));
@@ -157,6 +165,39 @@ public class ProductoServiceImpl implements ProductoService {
                 && request.getImagenUrl() == null && request.getTiempoPreparacionMin() == null
                 && request.getEsPromocion() == null && request.getDisponible() == null && request.getOrden() == null) {
             throw new BusinessException("Debe enviar al menos un campo para actualizar");
+        }
+    }
+
+    private String resolverImagenUrlParaCreacion(String imagenUrl) {
+        if (imagenUrl == null || imagenUrl.isBlank()) {
+            return null;
+        }
+        String normalizada = imagenUrl.trim();
+        supabaseStorageService.validarUrlDelBucket(StorageBucket.PRODUCTOS, normalizada);
+        return normalizada;
+    }
+
+    private void aplicarImagenUrlEnActualizacion(Producto producto, String imagenUrl) {
+        String anterior = producto.getImagenUrl();
+
+        if (imagenUrl.isBlank()) {
+            eliminarImagenAnteriorSiCorresponde(anterior);
+            producto.setImagenUrl(null);
+            return;
+        }
+
+        String nueva = imagenUrl.trim();
+        supabaseStorageService.validarUrlDelBucket(StorageBucket.PRODUCTOS, nueva);
+
+        if (!Objects.equals(anterior, nueva)) {
+            eliminarImagenAnteriorSiCorresponde(anterior);
+            producto.setImagenUrl(nueva);
+        }
+    }
+
+    private void eliminarImagenAnteriorSiCorresponde(String imagenUrl) {
+        if (imagenUrl != null && supabaseStorageService.esUrlDelBucket(StorageBucket.PRODUCTOS, imagenUrl)) {
+            supabaseStorageService.eliminarPorPublicUrl(StorageBucket.PRODUCTOS, imagenUrl);
         }
     }
 }
