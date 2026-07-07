@@ -4,6 +4,7 @@ import com.comandago.api.categoria.entity.Categoria;
 import com.comandago.api.categoria.repository.CategoriaRepository;
 import com.comandago.api.producto.dto.mapper.ProductoMapper;
 import com.comandago.api.producto.dto.request.ProductoCreateRequest;
+import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.response.ProductoResponse;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
@@ -13,6 +14,7 @@ import com.comandago.api.storage.StorageBucket;
 import com.comandago.api.storage.service.SupabaseStorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -62,6 +64,7 @@ class ProductoServiceImplTest {
 
         when(categoriaRepository.findById(2L)).thenReturn(Optional.of(hoja));
         when(categoriaRepository.existsByCategoriaPadreId(2L)).thenReturn(false);
+        when(productoRepository.findMaxOrdenEnCategoria(2L)).thenReturn(-1);
         when(productoMapper.toResponse(any(Producto.class))).thenReturn(
                 ProductoResponse.builder().id(1L).nombre("Bandeja paisa").precioFinal(new BigDecimal("25000")).build());
 
@@ -135,6 +138,7 @@ class ProductoServiceImplTest {
         Categoria hoja = Categoria.builder().id(2L).activo(true).build();
         when(categoriaRepository.findById(2L)).thenReturn(Optional.of(hoja));
         when(categoriaRepository.existsByCategoriaPadreId(2L)).thenReturn(false);
+        when(productoRepository.findMaxOrdenEnCategoria(2L)).thenReturn(-1);
         when(productoRepository.save(any(Producto.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productoMapper.toResponse(any(Producto.class))).thenReturn(
                 ProductoResponse.builder().id(1L).build());
@@ -231,5 +235,69 @@ class ProductoServiceImplTest {
         assertThatThrownBy(() -> productoService.crear(request))
                 .isInstanceOf(BusinessException.class);
         verify(productoRepository, never()).save(any());
+    }
+
+    @Test
+    void crear_asignaOrdenAutomatico_enCategoria() {
+        ProductoCreateRequest request = new ProductoCreateRequest();
+        request.setCategoriaId(2L);
+        request.setNombre("Bandeja paisa");
+        request.setPrecio(new BigDecimal("25000"));
+        request.setEsPromocion(false);
+
+        Categoria hoja = Categoria.builder().id(2L).nombre("Corrientes").activo(true).build();
+
+        when(categoriaRepository.findById(2L)).thenReturn(Optional.of(hoja));
+        when(categoriaRepository.existsByCategoriaPadreId(2L)).thenReturn(false);
+        when(productoRepository.findMaxOrdenEnCategoria(2L)).thenReturn(2);
+        when(productoRepository.save(any(Producto.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productoMapper.toResponse(any(Producto.class))).thenReturn(
+                ProductoResponse.builder().id(1L).nombre("Bandeja paisa").orden(3).build());
+
+        productoService.crear(request);
+
+        ArgumentCaptor<Producto> captor = ArgumentCaptor.forClass(Producto.class);
+        verify(productoRepository).save(captor.capture());
+        assertThat(captor.getValue().getOrden()).isEqualTo(3);
+    }
+
+    @Test
+    void reordenar_categoria_actualizaOrden() {
+        Categoria hoja = Categoria.builder().id(2L).nombre("Corrientes").activo(true).build();
+        Producto a = Producto.builder().id(1L).categoria(hoja).orden(2).activo(true).build();
+        Producto b = Producto.builder().id(2L).categoria(hoja).orden(0).activo(true).build();
+
+        when(productoRepository.countByActivoTrueAndCategoriaId(2L)).thenReturn(2L);
+        when(productoRepository.findAllById(List.of(2L, 1L))).thenReturn(List.of(a, b));
+
+        productoService.reordenar(new ProductoReordenarRequest(List.of(2L, 1L), 2L));
+
+        assertThat(b.getOrden()).isZero();
+        assertThat(a.getOrden()).isEqualTo(1);
+        verify(productoRepository).saveAll(List.of(a, b));
+    }
+
+    @Test
+    void reordenar_idsDeDistintaCategoria_lanzaBusinessException() {
+        Categoria cat1 = Categoria.builder().id(2L).nombre("Corrientes").activo(true).build();
+        Categoria cat2 = Categoria.builder().id(3L).nombre("Postres").activo(true).build();
+        Producto p1 = Producto.builder().id(1L).categoria(cat1).activo(true).build();
+        Producto p2 = Producto.builder().id(2L).categoria(cat2).activo(true).build();
+
+        when(productoRepository.countByActivoTrueAndCategoriaId(2L)).thenReturn(2L);
+        when(productoRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(p1, p2));
+
+        assertThatThrownBy(() -> productoService.reordenar(new ProductoReordenarRequest(List.of(1L, 2L), 2L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("misma categoría");
+    }
+
+    @Test
+    void reordenar_listaIncompleta_lanzaBusinessException() {
+        when(productoRepository.countByActivoTrueAndCategoriaId(2L)).thenReturn(3L);
+
+        assertThatThrownBy(() -> productoService.reordenar(new ProductoReordenarRequest(List.of(1L, 2L), 2L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("todos los productos activos");
     }
 }

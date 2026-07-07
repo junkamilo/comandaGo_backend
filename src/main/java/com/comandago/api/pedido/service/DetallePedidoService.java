@@ -12,13 +12,17 @@ import com.comandago.api.pedido.repository.DetallePedidoRepository;
 import com.comandago.api.pedido.repository.PedidoRepository;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
+import com.comandago.api.promocion.service.PromocionService;
 import com.comandago.api.shared.exception.BusinessException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
+import com.comandago.api.shared.promocion.PrecioProductoResolver;
+import com.comandago.api.shared.promocion.PrecioProductoResolver.ResultadoPrecioLinea;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Service
@@ -30,18 +34,24 @@ public class DetallePedidoService {
     private final ProductoRepository productoRepository;
     private final PedidoMapper pedidoMapper;
     private final PedidoTotalesCalculator totalesCalculator;
+    private final PrecioProductoResolver precioProductoResolver;
+    private final PromocionService promocionService;
     private final EntityManager entityManager;
 
     @Transactional
     public DetallePedidoResponse agregar(Long pedidoId, DetallePedidoItemRequest request) {
         Pedido pedido = buscarPedidoEditable(pedidoId);
         Producto producto = buscarProductoDisponible(request.getProductoId());
+        ResultadoPrecioLinea precio = precioProductoResolver.resolver(
+                producto, request.getCantidad(), OffsetDateTime.now());
+        precio.promocionId().ifPresent(promocionService::incrementarUso);
+
         DetallePedido detalle = DetallePedido.builder()
                 .pedido(pedido)
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(request.getCantidad())
-                .precioUnitario(producto.getPrecioFinal())
+                .precioUnitario(precio.precioUnitario())
                 .notasPreparacion(request.getNotasPreparacion())
                 .build();
         pedido.getDetalles().add(detalle);
@@ -67,6 +77,9 @@ public class DetallePedidoService {
         validarPedidoEditable(detalle.getPedido());
         if (request.getCantidad() != null) {
             detalle.setCantidad(request.getCantidad());
+            ResultadoPrecioLinea precio = precioProductoResolver.resolver(
+                    detalle.getProducto(), request.getCantidad(), OffsetDateTime.now());
+            detalle.setPrecioUnitario(precio.precioUnitario());
         }
         if (request.getNotasPreparacion() != null) {
             detalle.setNotasPreparacion(request.getNotasPreparacion());

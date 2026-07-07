@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -36,4 +37,9 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
             ORDER BY c.orden ASC, p.orden ASC
             """)
     List<Producto> findByActivoTrueOrderByCategoriaOrdenAscOrdenAsc();
+
+    @Query("SELECT COALESCE(MAX(p.orden), -1) FROM Producto p WHERE p.categoria.id = :categoriaId")
+    int findMaxOrdenEnCategoria(@Param("categoriaId") Long categoriaId);
+
+    long countByActivoTrueAndCategoriaId(Long categoriaId);
 }

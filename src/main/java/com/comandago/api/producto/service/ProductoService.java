@@ -1,6 +1,7 @@
 package com.comandago.api.producto.service;
 
 import com.comandago.api.producto.dto.request.ProductoCreateRequest;
+import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
 import com.comandago.api.producto.dto.response.ProductoResponse;
 import com.comandago.api.shared.response.PageResponse;
@@ -28,4 +29,6 @@ public interface ProductoService {
     ProductoResponse actualizarDisponibilidad(Long id, Boolean disponible);
 
     void eliminar(Long id);
+
+    void reordenar(ProductoReordenarRequest request);
 }

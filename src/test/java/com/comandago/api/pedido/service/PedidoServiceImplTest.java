@@ -16,7 +16,10 @@ import com.comandago.api.pedido.enums.OrigenPedido;
 import com.comandago.api.pedido.repository.PedidoRepository;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
+import com.comandago.api.promocion.service.PromocionService;
 import com.comandago.api.shared.exception.BusinessException;
+import com.comandago.api.shared.promocion.PrecioProductoResolver;
+import com.comandago.api.shared.promocion.PrecioProductoResolver.ResultadoPrecioLinea;
 import com.comandago.api.shared.security.UsuarioPrincipal;
 import com.comandago.api.usuario.entity.Usuario;
 import com.comandago.api.usuario.enums.Rol;
@@ -36,6 +39,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,6 +73,12 @@ class PedidoServiceImplTest {
 
     @Mock
     private EntityManager entityManager;
+
+    @Mock
+    private PrecioProductoResolver precioProductoResolver;
+
+    @Mock
+    private PromocionService promocionService;
 
     @InjectMocks
     private PedidoServiceImpl pedidoService;
@@ -170,6 +180,8 @@ class PedidoServiceImplTest {
         when(numeroGenerator.generar()).thenReturn("20260703-0001");
         when(mesaRepository.findById(1L)).thenReturn(Optional.of(mesa));
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
+        when(precioProductoResolver.resolver(eq(producto), eq(1), any()))
+                .thenReturn(new ResultadoPrecioLinea(BigDecimal.TEN, Optional.empty()));
         when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> {
             Pedido p = inv.getArgument(0);
             p.setId(1L);
@@ -191,6 +203,64 @@ class PedidoServiceImplTest {
         verify(usuarioRepository, never()).findById(50L);
         verify(mesaCoordinator).ocuparMesa(mesa);
         verify(totalesCalculator).aplicarImpuestos(ArgumentMatchers.<Pedido>any());
+    }
+
+    @Test
+    void crear_productoConPromoVigente_usaPrecioResuelto() {
+        PedidoCreateRequest request = pedidoMesaQrRequest();
+        Mesa mesa = Mesa.builder().id(1L).activo(true).build();
+        Producto producto = Producto.builder().id(10L).nombre("Cerveza").activo(true).disponible(true)
+                .precio(new BigDecimal("10000")).build();
+
+        when(numeroGenerator.generar()).thenReturn("20260703-0002");
+        when(mesaRepository.findById(1L)).thenReturn(Optional.of(mesa));
+        when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
+        when(precioProductoResolver.resolver(eq(producto), eq(1), any()))
+                .thenReturn(new ResultadoPrecioLinea(new BigDecimal("8000"), Optional.of(99L)));
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> {
+            Pedido p = inv.getArgument(0);
+            p.setId(2L);
+            return p;
+        });
+        when(pedidoRepository.findByIdWithDetalles(2L)).thenAnswer(inv -> Optional.of(
+                Pedido.builder().id(2L).detalles(List.of()).build()));
+        when(pedidoMapper.toResponse(any(Pedido.class)))
+                .thenReturn(PedidoResponse.builder().id(2L).build());
+
+        pedidoService.crear(request);
+
+        verify(promocionService).incrementarUso(99L);
+        verify(precioProductoResolver).resolver(eq(producto), eq(1), any());
+    }
+
+    @Test
+    void crear_productoLegacySinPromoNueva_usaPrecioFinal() {
+        PedidoCreateRequest request = pedidoMesaQrRequest();
+        Mesa mesa = Mesa.builder().id(1L).activo(true).build();
+        Producto producto = Producto.builder().id(10L).nombre("Combo").activo(true).disponible(true)
+                .precio(new BigDecimal("15000"))
+                .precioPromocion(new BigDecimal("12000"))
+                .esPromocion(true)
+                .build();
+
+        when(numeroGenerator.generar()).thenReturn("20260703-0003");
+        when(mesaRepository.findById(1L)).thenReturn(Optional.of(mesa));
+        when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
+        when(precioProductoResolver.resolver(eq(producto), eq(1), any()))
+                .thenReturn(new ResultadoPrecioLinea(new BigDecimal("12000"), Optional.empty()));
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> {
+            Pedido p = inv.getArgument(0);
+            p.setId(3L);
+            return p;
+        });
+        when(pedidoRepository.findByIdWithDetalles(3L)).thenAnswer(inv -> Optional.of(
+                Pedido.builder().id(3L).detalles(List.of()).build()));
+        when(pedidoMapper.toResponse(any(Pedido.class)))
+                .thenReturn(PedidoResponse.builder().id(3L).build());
+
+        pedidoService.crear(request);
+
+        verify(promocionService, never()).incrementarUso(ArgumentMatchers.anyLong());
     }
 
     private PedidoCreateRequest pedidoMesaQrRequest() {

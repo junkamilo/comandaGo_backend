@@ -4,6 +4,7 @@ import com.comandago.api.categoria.entity.Categoria;
 import com.comandago.api.categoria.repository.CategoriaRepository;
 import com.comandago.api.producto.dto.mapper.ProductoMapper;
 import com.comandago.api.producto.dto.request.ProductoCreateRequest;
+import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
 import com.comandago.api.producto.dto.response.ProductoResponse;
 import com.comandago.api.producto.entity.Producto;
@@ -22,7 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +45,7 @@ public class ProductoServiceImpl implements ProductoService {
         Producto producto = Producto.builder().categoria(categoria).build();
         productoMapper.applyCreate(producto, request);
         producto.setImagenUrl(resolverImagenUrlParaCreacion(request.getImagenUrl()));
+        producto.setOrden(productoRepository.findMaxOrdenEnCategoria(categoria.getId()) + 1);
         return productoMapper.toResponse(productoRepository.save(producto));
     }
 
@@ -99,8 +104,11 @@ public class ProductoServiceImpl implements ProductoService {
     public ProductoResponse actualizar(Long id, ProductoUpdateRequest request) {
         validarAlMenosUnCampo(request);
         Producto producto = buscarPorId(id);
-        if (request.getCategoriaId() != null) {
-            producto.setCategoria(resolverCategoriaHoja(request.getCategoriaId()));
+        if (request.getCategoriaId() != null
+                && !request.getCategoriaId().equals(producto.getCategoria().getId())) {
+            Categoria nueva = resolverCategoriaHoja(request.getCategoriaId());
+            producto.setCategoria(nueva);
+            producto.setOrden(productoRepository.findMaxOrdenEnCategoria(nueva.getId()) + 1);
         }
         if (request.getImagenUrl() != null) {
             aplicarImagenUrlEnActualizacion(producto, request.getImagenUrl());
@@ -127,6 +135,43 @@ public class ProductoServiceImpl implements ProductoService {
         Producto producto = buscarPorId(id);
         producto.setActivo(false);
         productoRepository.save(producto);
+    }
+
+    @Override
+    @Transactional
+    public void reordenar(ProductoReordenarRequest request) {
+        Long categoriaId = request.categoriaId();
+        long activosEnCategoria = productoRepository.countByActivoTrueAndCategoriaId(categoriaId);
+
+        if (request.ids().size() != activosEnCategoria) {
+            throw new BusinessException(
+                    "Debe incluir todos los productos activos de la categoría para reordenar");
+        }
+
+        List<Producto> productos = productoRepository.findAllById(request.ids());
+        if (productos.size() != request.ids().size()) {
+            throw new ResourceNotFoundException("Uno o más productos no existen");
+        }
+
+        Map<Long, Producto> porId = productos.stream()
+                .collect(Collectors.toMap(Producto::getId, Function.identity()));
+
+        for (int i = 0; i < request.ids().size(); i++) {
+            Long id = request.ids().get(i);
+            Producto producto = porId.get(id);
+            if (producto == null) {
+                throw new ResourceNotFoundException("Producto no encontrado con id: " + id);
+            }
+            if (!Boolean.TRUE.equals(producto.getActivo())) {
+                throw new BusinessException("Solo se pueden reordenar productos activos");
+            }
+            if (!Objects.equals(categoriaId, producto.getCategoria().getId())) {
+                throw new BusinessException("Todos los productos deben pertenecer a la misma categoría");
+            }
+            producto.setOrden(i);
+        }
+
+        productoRepository.saveAll(productos);
     }
 
     private Producto buscarPorId(Long id) {
@@ -163,7 +208,7 @@ public class ProductoServiceImpl implements ProductoService {
         if (request.getCategoriaId() == null && request.getNombre() == null && request.getDescripcion() == null
                 && request.getPrecio() == null && request.getPrecioPromocion() == null
                 && request.getImagenUrl() == null && request.getTiempoPreparacionMin() == null
-                && request.getEsPromocion() == null && request.getDisponible() == null && request.getOrden() == null) {
+                && request.getEsPromocion() == null && request.getDisponible() == null) {
             throw new BusinessException("Debe enviar al menos un campo para actualizar");
         }
     }

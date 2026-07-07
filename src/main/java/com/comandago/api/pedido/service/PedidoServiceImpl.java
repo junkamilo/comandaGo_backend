@@ -16,8 +16,11 @@ import com.comandago.api.pedido.enums.OrigenPedido;
 import com.comandago.api.pedido.repository.PedidoRepository;
 import com.comandago.api.producto.entity.Producto;
 import com.comandago.api.producto.repository.ProductoRepository;
+import com.comandago.api.promocion.service.PromocionService;
 import com.comandago.api.shared.exception.BusinessException;
 import com.comandago.api.shared.exception.ResourceNotFoundException;
+import com.comandago.api.shared.promocion.PrecioProductoResolver;
+import com.comandago.api.shared.promocion.PrecioProductoResolver.ResultadoPrecioLinea;
 import com.comandago.api.shared.response.PageResponse;
 import com.comandago.api.shared.security.SecurityUtils;
 import com.comandago.api.shared.security.UsuarioPrincipal;
@@ -46,6 +49,8 @@ public class PedidoServiceImpl implements PedidoService {
     private final PedidoMapper pedidoMapper;
     private final PedidoTotalesCalculator totalesCalculator;
     private final PedidoMesaCoordinator mesaCoordinator;
+    private final PrecioProductoResolver precioProductoResolver;
+    private final PromocionService promocionService;
     private final EntityManager entityManager;
 
     @Override
@@ -192,12 +197,16 @@ public class PedidoServiceImpl implements PedidoService {
         if (!Boolean.TRUE.equals(producto.getActivo()) || !Boolean.TRUE.equals(producto.getDisponible())) {
             throw new BusinessException("El producto " + producto.getNombre() + " no está disponible");
         }
+        ResultadoPrecioLinea precio = precioProductoResolver.resolver(
+                producto, item.getCantidad(), OffsetDateTime.now());
+        precio.promocionId().ifPresent(promocionService::incrementarUso);
+
         return DetallePedido.builder()
                 .pedido(pedido)
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(item.getCantidad())
-                .precioUnitario(producto.getPrecioFinal())
+                .precioUnitario(precio.precioUnitario())
                 .notasPreparacion(item.getNotasPreparacion())
                 .build();
     }

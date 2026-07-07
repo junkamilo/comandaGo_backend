@@ -2,6 +2,7 @@ package com.comandago.api.producto.controller;
 
 import com.comandago.api.producto.dto.request.ProductoCreateRequest;
 import com.comandago.api.producto.dto.request.ProductoDisponibilidadRequest;
+import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
 import com.comandago.api.producto.dto.response.ProductoResponse;
 import com.comandago.api.producto.service.ProductoService;
@@ -70,6 +71,12 @@ public class ProductoController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(ApiResponse.ok(productoService.listar(categoriaId, activo, disponible, esPromocion,
                 PageRequest.of(page, size, Sort.by("orden").ascending()))));
+    }
+
+    @PutMapping("/reordenar")
+    public ResponseEntity<ApiResponse<Void>> reordenar(@Valid @RequestBody ProductoReordenarRequest request) {
+        productoService.reordenar(request);
+        return ResponseEntity.ok(ApiResponse.ok("Orden actualizado", null));
     }
 
     @GetMapping("/{id}")

@@ -43,7 +43,6 @@ public class ProductoMapper {
         producto.setPrecioPromocion(promo ? request.getPrecioPromocion() : null);
         producto.setTiempoPreparacionMin(request.getTiempoPreparacionMin());
         producto.setEsPromocion(promo);
-        producto.setOrden(request.getOrden() != null ? request.getOrden() : 0);
         producto.setDisponible(true);
         producto.setActivo(true);
     }
@@ -63,9 +62,6 @@ public class ProductoMapper {
         }
         if (request.getDisponible() != null) {
             producto.setDisponible(request.getDisponible());
-        }
-        if (request.getOrden() != null) {
-            producto.setOrden(request.getOrden());
         }
         if (request.getEsPromocion() != null) {
             producto.setEsPromocion(request.getEsPromocion());

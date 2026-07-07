@@ -49,7 +49,8 @@ public class SupabaseStorageService {
         }
 
         String publicUrl = construirPublicUrl(bucket, objectPath);
-        return new UploadUrlResponse(signed.url(), publicUrl, objectPath);
+        String signedUrl = construirSignedUploadUrl(signed.url());
+        return new UploadUrlResponse(signedUrl, publicUrl, objectPath);
     }
 
     public void eliminarObjetoCategoria(String objectPath) {
@@ -113,6 +114,23 @@ public class SupabaseStorageService {
         return base + "/" + objectPath;
     }
 
+    private String construirSignedUploadUrl(String signedPath) {
+        if (signedPath == null || signedPath.isBlank()) {
+            throw new BusinessException("No se pudo generar la URL de subida");
+        }
+        if (signedPath.startsWith("http://") || signedPath.startsWith("https://")) {
+            return signedPath;
+        }
+        String base = properties.getUrl().replaceAll("/$", "");
+        if (signedPath.startsWith("/storage/")) {
+            return base + signedPath;
+        }
+        if (signedPath.startsWith("/object/")) {
+            return base + "/storage/v1" + signedPath;
+        }
+        return base + "/storage/v1/" + signedPath.replaceFirst("^/+", "");
+    }
+
     private String normalizarBaseUrl(String url) {
         if (url == null) {
             return "";
@@ -154,7 +172,12 @@ public class SupabaseStorageService {
                     .retrieve()
                     .body(responseType);
         } catch (RestClientResponseException ex) {
-            log.error("Error Supabase POST {}: {}", path, ex.getResponseBodyAsString());
+            String responseBody = ex.getResponseBodyAsString();
+            log.error("Error Supabase POST {}: {}", path, responseBody);
+            if (ex.getStatusCode().value() == 404 && responseBody.contains("related resource does not exist")) {
+                throw new BusinessException(
+                        "El bucket de Supabase Storage no existe. Crea los buckets 'categorias' y 'productos' en Supabase (ver docs/supabase-storage-setup.md).");
+            }
             throw new BusinessException("Error al comunicarse con el almacenamiento de imágenes");
         }
     }
