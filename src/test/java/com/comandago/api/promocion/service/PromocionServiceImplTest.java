@@ -53,6 +53,7 @@ class PromocionServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 OffsetDateTime.now().minusHours(1),
                 null,
                 null,
@@ -70,7 +71,7 @@ class PromocionServiceImplTest {
         when(promocionMapper.toResponse(any(Promocion.class))).thenReturn(
                 new PromocionResponse(
                         10L, "Happy Hour", null, TipoPromocion.PORCENTAJE,
-                        new BigDecimal("20"), null, null, null,
+                        new BigDecimal("20"), null, null, null, null,
                         request.fechaInicio(), null, null, 0, true, true,
                         List.of(), OffsetDateTime.now()));
 
@@ -89,6 +90,7 @@ class PromocionServiceImplTest {
                 "Promo",
                 null,
                 TipoPromocion.PORCENTAJE,
+                null,
                 null,
                 null,
                 null,
@@ -113,6 +115,7 @@ class PromocionServiceImplTest {
                 TipoPromocion.PAGA_X_LLEVA_Y,
                 null,
                 null,
+                null,
                 2,
                 2,
                 OffsetDateTime.now(),
@@ -135,6 +138,7 @@ class PromocionServiceImplTest {
                 TipoPromocion.MONTO_FIJO,
                 null,
                 new BigDecimal("1000"),
+                null,
                 null,
                 null,
                 OffsetDateTime.now(),
@@ -169,6 +173,7 @@ class PromocionServiceImplTest {
                 new BigDecimal("2000"),
                 null,
                 null,
+                null,
                 OffsetDateTime.now().minusDays(1),
                 null,
                 null,
@@ -183,7 +188,7 @@ class PromocionServiceImplTest {
         when(promocionMapper.toResponse(any(Promocion.class))).thenReturn(
                 new PromocionResponse(
                         5L, "Monto fijo", null, TipoPromocion.MONTO_FIJO,
-                        null, new BigDecimal("2000"), null, null,
+                        null, new BigDecimal("2000"), null, null, null,
                         request.fechaInicio(), null, null, 3, true, true,
                         List.of(), OffsetDateTime.now()));
 

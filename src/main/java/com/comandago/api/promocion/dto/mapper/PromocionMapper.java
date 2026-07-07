@@ -29,6 +29,7 @@ public class PromocionMapper {
                 promocion.getTipo(),
                 promocion.getValorPorcentaje(),
                 promocion.getValorMonto(),
+                promocion.getValorPrecio(),
                 promocion.getPagaCantidad(),
                 promocion.getLlevaCantidad(),
                 promocion.getFechaInicio(),

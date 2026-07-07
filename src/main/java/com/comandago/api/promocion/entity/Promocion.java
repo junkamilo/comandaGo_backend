@@ -53,6 +53,9 @@ public class Promocion {
     @Column(name = "valor_monto", precision = 12, scale = 2)
     private BigDecimal valorMonto;
 
+    @Column(name = "valor_precio", precision = 12, scale = 2)
+    private BigDecimal valorPrecio;
+
     @Column(name = "paga_cantidad")
     private Integer pagaCantidad;
 

@@ -22,6 +22,7 @@ public record PromocionRequest(
 
         BigDecimal valorPorcentaje,
         BigDecimal valorMonto,
+        BigDecimal valorPrecio,
         Integer pagaCantidad,
         Integer llevaCantidad,
 

@@ -135,6 +135,11 @@ public class PromocionServiceImpl implements PromocionService {
                     throw new BusinessException("Una promo de monto fijo requiere valor_monto mayor a 0");
                 }
             }
+            case PRECIO_FIJO -> {
+                if (request.valorPrecio() == null || request.valorPrecio().doubleValue() <= 0) {
+                    throw new BusinessException("Una promo de precio fijo requiere valor_precio mayor a 0");
+                }
+            }
             case PAGA_X_LLEVA_Y -> {
                 if (request.pagaCantidad() == null || request.llevaCantidad() == null) {
                     throw new BusinessException("Una promo paga X lleva Y requiere ambas cantidades");
@@ -166,12 +171,14 @@ public class PromocionServiceImpl implements PromocionService {
 
         promocion.setValorPorcentaje(null);
         promocion.setValorMonto(null);
+        promocion.setValorPrecio(null);
         promocion.setPagaCantidad(null);
         promocion.setLlevaCantidad(null);
 
         switch (request.tipo()) {
             case PORCENTAJE -> promocion.setValorPorcentaje(request.valorPorcentaje());
             case MONTO_FIJO -> promocion.setValorMonto(request.valorMonto());
+            case PRECIO_FIJO -> promocion.setValorPrecio(request.valorPrecio());
             case PAGA_X_LLEVA_Y -> {
                 promocion.setPagaCantidad(request.pagaCantidad());
                 promocion.setLlevaCantidad(request.llevaCantidad());

@@ -13,6 +13,7 @@ public record PromocionResponse(
         TipoPromocion tipo,
         BigDecimal valorPorcentaje,
         BigDecimal valorMonto,
+        BigDecimal valorPrecio,
         Integer pagaCantidad,
         Integer llevaCantidad,
         OffsetDateTime fechaInicio,

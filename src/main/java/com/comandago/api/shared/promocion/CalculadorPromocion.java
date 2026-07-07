@@ -20,6 +20,7 @@ public final class CalculadorPromocion {
                 yield precioOriginal.subtract(descuento).max(BigDecimal.ZERO);
             }
             case MONTO_FIJO -> precioOriginal.subtract(promo.getValorMonto()).max(BigDecimal.ZERO);
+            case PRECIO_FIJO -> promo.getValorPrecio().max(BigDecimal.ZERO);
             case PAGA_X_LLEVA_Y -> precioOriginal;
         };
     }

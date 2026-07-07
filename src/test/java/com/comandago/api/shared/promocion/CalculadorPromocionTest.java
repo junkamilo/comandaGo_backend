@@ -35,6 +35,18 @@ class CalculadorPromocionTest {
     }
 
     @Test
+    void precioConDescuento_precioFijo_usaPrecioDirecto() {
+        Promocion promo = Promocion.builder()
+                .tipo(TipoPromocion.PRECIO_FIJO)
+                .valorPrecio(new BigDecimal("7000"))
+                .build();
+
+        BigDecimal resultado = CalculadorPromocion.precioConDescuento(new BigDecimal("10000"), promo);
+
+        assertThat(resultado).isEqualByComparingTo("7000");
+    }
+
+    @Test
     void totalPagaXLlevaY_seisUnidades_cobraCuatro() {
         Promocion promo = Promocion.builder()
                 .tipo(TipoPromocion.PAGA_X_LLEVA_Y)
