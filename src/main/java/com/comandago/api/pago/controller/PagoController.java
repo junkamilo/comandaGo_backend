@@ -1,7 +1,8 @@
 package com.comandago.api.pago.controller;
 
-import com.comandago.api.pago.dto.request.PagoCreateRequest;
+import com.comandago.api.pago.dto.request.RegistrarPagoRequest;
 import com.comandago.api.pago.dto.response.PagoResponse;
+import com.comandago.api.pago.dto.response.ResumenPagoPedidoResponse;
 import com.comandago.api.pago.service.PagoService;
 import com.comandago.api.shared.response.ApiResponse;
 import com.comandago.api.shared.response.PageResponse;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,19 +28,49 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
+@RequestMapping("/api/v1/pagos")
 @RequiredArgsConstructor
 @Validated
 public class PagoController {
 
     private final PagoService pagoService;
 
-    @PostMapping("/api/v1/pagos")
-    public ResponseEntity<ApiResponse<PagoResponse>> crear(@Valid @RequestBody PagoCreateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Pago registrado", pagoService.crear(request)));
+    @GetMapping("/pedido/{pedidoId}")
+    public ResponseEntity<ApiResponse<ResumenPagoPedidoResponse>> resumen(
+            @PathVariable @Positive Long pedidoId) {
+        return ResponseEntity.ok(ApiResponse.ok(pagoService.resumenPorPedido(pedidoId)));
     }
 
-    @GetMapping("/api/v1/pagos")
+    @GetMapping("/pedido/{pedidoId}/detalle")
+    public ResponseEntity<ApiResponse<List<PagoResponse>>> listarPorPedido(
+            @PathVariable @Positive Long pedidoId) {
+        return ResponseEntity.ok(ApiResponse.ok(pagoService.listarPorPedido(pedidoId)));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<PagoResponse>> registrar(@Valid @RequestBody RegistrarPagoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Pago registrado", pagoService.registrar(request)));
+    }
+
+    @PatchMapping("/{id}/confirmar")
+    public ResponseEntity<ApiResponse<PagoResponse>> confirmar(@PathVariable @Positive Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Pago confirmado", pagoService.confirmar(id)));
+    }
+
+    @PatchMapping("/{id}/rechazar")
+    public ResponseEntity<ApiResponse<PagoResponse>> rechazar(@PathVariable @Positive Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Pago rechazado", pagoService.rechazar(id)));
+    }
+
+    @PatchMapping("/{id}/reembolsar")
+    public ResponseEntity<ApiResponse<PagoResponse>> reembolsar(
+            @PathVariable @Positive Long id,
+            @RequestParam(required = false) String notas) {
+        return ResponseEntity.ok(ApiResponse.ok("Pago reembolsado", pagoService.reembolsar(id, notas)));
+    }
+
+    @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<PagoResponse>>> listar(
             @RequestParam(required = false) Long pedidoId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -47,14 +79,8 @@ public class PagoController {
                 PageRequest.of(page, size, Sort.by("fechaPago").descending()))));
     }
 
-    @GetMapping("/api/v1/pagos/{id}")
+    @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<PagoResponse>> obtener(@PathVariable @Positive Long id) {
         return ResponseEntity.ok(ApiResponse.ok(pagoService.obtenerPorId(id)));
-    }
-
-    @GetMapping("/api/v1/pedidos/{pedidoId}/pagos")
-    public ResponseEntity<ApiResponse<List<PagoResponse>>> listarPorPedido(
-            @PathVariable @Positive Long pedidoId) {
-        return ResponseEntity.ok(ApiResponse.ok(pagoService.listarPorPedido(pedidoId)));
     }
 }

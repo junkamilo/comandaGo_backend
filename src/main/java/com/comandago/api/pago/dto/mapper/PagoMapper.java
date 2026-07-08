@@ -8,14 +8,21 @@ import org.springframework.stereotype.Component;
 public class PagoMapper {
 
     public PagoResponse toResponse(Pago pago) {
-        return PagoResponse.builder()
-                .id(pago.getId())
-                .pedidoId(pago.getPedido().getId())
-                .usuarioId(pago.getUsuario() != null ? pago.getUsuario().getId() : null)
-                .metodo(pago.getMetodo())
-                .monto(pago.getMonto())
-                .referencia(pago.getReferencia())
-                .fechaPago(pago.getFechaPago())
-                .build();
+        return new PagoResponse(
+                pago.getId(),
+                pago.getPedido().getId(),
+                pago.getPedido().getNumeroPedido(),
+                pago.getUsuario() != null ? pago.getUsuario().getNombre() : null,
+                pago.getMetodo(),
+                pago.getEstado(),
+                pago.getMonto(),
+                pago.getPropina(),
+                pago.getMontoRecibido(),
+                pago.getVuelto(),
+                pago.getReferencia(),
+                pago.getProveedorId(),
+                pago.getNotas(),
+                pago.getFechaPago()
+        );
     }
 }

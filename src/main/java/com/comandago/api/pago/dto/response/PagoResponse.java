@@ -1,19 +1,25 @@
 package com.comandago.api.pago.dto.response;
 
+import com.comandago.api.pago.enums.EstadoTransaccionPago;
 import com.comandago.api.pago.enums.MetodoPago;
-import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
-@Builder
 public record PagoResponse(
         Long id,
         Long pedidoId,
-        Long usuarioId,
+        String numeroPedido,
+        String cajeroNombre,
         MetodoPago metodo,
+        EstadoTransaccionPago estado,
         BigDecimal monto,
+        BigDecimal propina,
+        BigDecimal montoRecibido,
+        BigDecimal vuelto,
         String referencia,
+        String proveedorId,
+        String notas,
         OffsetDateTime fechaPago
 ) {
 }

@@ -7,6 +7,7 @@ import com.comandago.api.mesa.entity.Mesa;
 import com.comandago.api.mesa.enums.EstadoMesa;
 import com.comandago.api.mesa.repository.MesaRepository;
 import com.comandago.api.pedido.dto.request.DetalleEstadoRequest;
+import com.comandago.api.pedido.dto.request.CancelarDetallesRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.PedidoCreateRequest;
 import com.comandago.api.pedido.dto.request.PedidoEstadoRequest;
@@ -23,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -114,6 +116,21 @@ class PedidoIntegrationTest extends AbstractIntegrationTest {
         assertThat(actualizado.estado()).isEqualTo(EstadoPedido.LISTO);
     }
 
+    @Test
+    void cancelarDetalle_excluyeCanceladosDelSubtotal() {
+        var creado = pedidoService.crear(pedidoMesaQr(2));
+        var segundoDetalle = detallePedidoService.agregar(creado.id(), detalleRequest(1));
+
+        CancelarDetallesRequest request = new CancelarDetallesRequest();
+        request.setDetalleIds(Set.of(segundoDetalle.id()));
+        var actualizado = pedidoService.cancelarDetalles(creado.id(), request);
+
+        assertThat(actualizado.detalles()).hasSize(2);
+        assertThat(actualizado.detalles().stream().filter(d -> d.estado() == EstadoDetalle.CANCELADO).count())
+                .isEqualTo(1);
+        assertThat(actualizado.subtotal()).isEqualByComparingTo("30000.00");
+    }
+
     private PedidoCreateRequest pedidoMesaQr(int cantidad) {
         PedidoCreateRequest request = new PedidoCreateRequest();
         request.setOrigen(OrigenPedido.MESA_QR);
@@ -129,5 +146,12 @@ class PedidoIntegrationTest extends AbstractIntegrationTest {
         PedidoEstadoRequest request = new PedidoEstadoRequest();
         request.setEstado(EstadoPedido.EN_PREPARACION);
         return request;
+    }
+
+    private DetallePedidoItemRequest detalleRequest(int cantidad) {
+        DetallePedidoItemRequest detalle = new DetallePedidoItemRequest();
+        detalle.setProductoId(productoId);
+        detalle.setCantidad(cantidad);
+        return detalle;
     }
 }

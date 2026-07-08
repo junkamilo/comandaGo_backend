@@ -4,6 +4,8 @@ import com.comandago.api.mesa.entity.Mesa;
 import com.comandago.api.mesa.enums.EstadoMesa;
 import com.comandago.api.mesa.repository.MesaRepository;
 import com.comandago.api.pedido.dto.mapper.PedidoMapper;
+import com.comandago.api.pedido.dto.request.AgregarDetallesRequest;
+import com.comandago.api.pedido.dto.request.CancelarDetallesRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.PedidoCreateRequest;
 import com.comandago.api.pedido.dto.request.PedidoEstadoRequest;
@@ -109,15 +111,69 @@ class PedidoServiceImplTest {
     }
 
     @Test
-    void actualizarEstado_transicionInvalida_lanzaBusinessException() {
-        Pedido pedido = Pedido.builder().id(1L).estado(EstadoPedido.POR_CONFIRMAR).build();
+    void actualizarEstado_entregadoDelegaAEntregarCompleto() {
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.LISTO)
+                .detalles(List.of(
+                        DetallePedido.builder().id(10L).estado(EstadoDetalle.LISTO).build(),
+                        DetallePedido.builder().id(11L).estado(EstadoDetalle.LISTO).build()))
+                .build();
         PedidoEstadoRequest request = new PedidoEstadoRequest();
         request.setEstado(EstadoPedido.ENTREGADO);
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(pedidoMapper.toResponse(any(Pedido.class))).thenReturn(
+                PedidoResponse.builder().id(1L).estado(EstadoPedido.ENTREGADO).build());
 
-        assertThatThrownBy(() -> pedidoService.actualizarEstado(1L, request))
-                .isInstanceOf(BusinessException.class);
+        PedidoResponse response = pedidoService.actualizarEstado(1L, request);
+
+        assertThat(response.estado()).isEqualTo(EstadoPedido.ENTREGADO);
+        assertThat(pedido.getDetalles()).allMatch(d -> d.getEstado() == EstadoDetalle.ENTREGADO);
+        verify(mesaCoordinator, never()).liberarMesaSiCorresponde(pedido);
+    }
+
+    @Test
+    void entregarCompleto_conItemsEnPreparacion_lanzaBusinessException() {
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.LISTO)
+                .detalles(List.of(
+                        DetallePedido.builder().id(10L).estado(EstadoDetalle.LISTO).build(),
+                        DetallePedido.builder().id(11L).estado(EstadoDetalle.EN_PREPARACION).build()))
+                .build();
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+
+        assertThatThrownBy(() -> pedidoService.entregarCompleto(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("listos");
+    }
+
+    @Test
+    void entregarCompleto_marcaTodosEntregadosSinLiberarMesa() {
+        Mesa mesa = Mesa.builder().id(5L).estado(EstadoMesa.OCUPADA).build();
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.LISTO)
+                .mesa(mesa)
+                .detalles(List.of(
+                        DetallePedido.builder().id(10L).estado(EstadoDetalle.LISTO).build(),
+                        DetallePedido.builder().id(11L).estado(EstadoDetalle.LISTO).build()))
+                .build();
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(pedidoMapper.toResponse(any(Pedido.class))).thenReturn(
+                PedidoResponse.builder().id(1L).estado(EstadoPedido.ENTREGADO).build());
+
+        PedidoResponse response = pedidoService.entregarCompleto(1L);
+
+        assertThat(response.estado()).isEqualTo(EstadoPedido.ENTREGADO);
+        assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.ENTREGADO);
+        assertThat(pedido.getDetalles()).allMatch(d -> d.getEstado() == EstadoDetalle.ENTREGADO);
+        verify(mesaCoordinator, never()).liberarMesaSiCorresponde(pedido);
     }
 
     @Test
@@ -134,10 +190,10 @@ class PedidoServiceImplTest {
     @Test
     void cancelar_pedidoActivo_cancelaDetallesYLliberaMesa() {
         Mesa mesa = Mesa.builder().id(5L).estado(EstadoMesa.OCUPADA).build();
-        DetallePedido detalle = DetallePedido.builder().estado(EstadoDetalle.PENDIENTE).build();
+        DetallePedido detalle = DetallePedido.builder().id(10L).estado(EstadoDetalle.PENDIENTE).build();
         Pedido pedido = Pedido.builder()
                 .id(1L)
-                .estado(EstadoPedido.EN_PREPARACION)
+                .estado(EstadoPedido.POR_CONFIRMAR)
                 .mesa(mesa)
                 .detalles(List.of(detalle))
                 .build();
@@ -154,19 +210,92 @@ class PedidoServiceImplTest {
     }
 
     @Test
-    void actualizarEstado_entregado_liberaMesa() {
-        Pedido pedido = Pedido.builder().id(1L).estado(EstadoPedido.LISTO).build();
+    void cancelar_pedidoConDetalleEnPreparacion_lanzaBusinessException() {
+        DetallePedido detalle = DetallePedido.builder()
+                .id(10L)
+                .nombreProducto("Hamburguesa")
+                .estado(EstadoDetalle.EN_PREPARACION)
+                .build();
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.EN_PREPARACION)
+                .detalles(List.of(detalle))
+                .build();
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+
+        assertThatThrownBy(() -> pedidoService.cancelar(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No se puede cancelar el pedido completo");
+    }
+
+    @Test
+    void cancelarDetalles_siTodosCancelados_cancelaPedido() {
+        DetallePedido detalle = DetallePedido.builder()
+                .id(10L)
+                .nombreProducto("Pizza")
+                .estado(EstadoDetalle.PENDIENTE)
+                .build();
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.EN_PREPARACION)
+                .detalles(List.of(detalle))
+                .build();
+        detalle.setPedido(pedido);
+
+        CancelarDetallesRequest request = new CancelarDetallesRequest();
+        request.setDetalleIds(java.util.Set.of(10L));
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(pedidoMapper.toResponse(any(Pedido.class))).thenReturn(
+                PedidoResponse.builder().id(1L).estado(EstadoPedido.CANCELADO).build());
+
+        pedidoService.cancelarDetalles(1L, request);
+
+        assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.CANCELADO);
+        assertThat(detalle.getEstado()).isEqualTo(EstadoDetalle.CANCELADO);
+        verify(mesaCoordinator).liberarMesaSiCorresponde(pedido);
+    }
+
+    @Test
+    void agregarDetalles_pedidoTerminal_lanzaBusinessException() {
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.CANCELADO)
+                .detalles(new java.util.ArrayList<>())
+                .build();
+        AgregarDetallesRequest request = new AgregarDetallesRequest();
+        DetallePedidoItemRequest item = new DetallePedidoItemRequest();
+        item.setProductoId(10L);
+        item.setCantidad(1);
+        request.setDetalles(List.of(item));
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+
+        assertThatThrownBy(() -> pedidoService.agregarDetalles(1L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No se puede modificar un pedido");
+    }
+
+    @Test
+    void actualizarEstado_entregado_noLiberaMesa() {
+        Pedido pedido = Pedido.builder()
+                .id(1L)
+                .estado(EstadoPedido.LISTO)
+                .detalles(List.of(DetallePedido.builder().id(10L).estado(EstadoDetalle.LISTO).build()))
+                .build();
         PedidoEstadoRequest request = new PedidoEstadoRequest();
         request.setEstado(EstadoPedido.ENTREGADO);
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
         when(pedidoRepository.save(any(Pedido.class))).thenAnswer(inv -> inv.getArgument(0));
         when(pedidoMapper.toResponse(any(Pedido.class))).thenReturn(
                 PedidoResponse.builder().id(1L).estado(EstadoPedido.ENTREGADO).build());
 
         pedidoService.actualizarEstado(1L, request);
 
-        verify(mesaCoordinator).liberarMesaSiCorresponde(pedido);
+        verify(mesaCoordinator, never()).liberarMesaSiCorresponde(pedido);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.comandago.api.pedido.repository;
 
 import com.comandago.api.pedido.entity.Pedido;
+import com.comandago.api.pedido.enums.EstadoPago;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.enums.OrigenPedido;
 import org.springframework.data.domain.Page;
@@ -41,6 +42,22 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
     List<Pedido> findByMesaIdAndEstadoInOrderByFechaPedidoAsc(Long mesaId, Collection<EstadoPedido> estados);
 
+    boolean existsByMesaIdAndEstadoNotAndEstadoPagoNot(
+            Long mesaId, EstadoPedido estado, EstadoPago estadoPago);
+
+    @Query("SELECT DISTINCT p FROM Pedido p "
+            + "LEFT JOIN FETCH p.detalles "
+            + "LEFT JOIN FETCH p.mesa "
+            + "LEFT JOIN FETCH p.usuario "
+            + "WHERE p.mesa.id = :mesaId "
+            + "AND p.estado <> :cancelado "
+            + "AND p.estadoPago <> :pagado "
+            + "ORDER BY p.fechaPedido ASC")
+    List<Pedido> findCuentasPendientesPorMesa(
+            @Param("mesaId") Long mesaId,
+            @Param("cancelado") EstadoPedido cancelado,
+            @Param("pagado") EstadoPago pagado);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "UPDATE pedidos SET impuestos = :impuestos, "
             + "total = subtotal - descuento + :impuestos + costo_envio WHERE id = :id",
@@ -50,4 +67,14 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(numero_pedido FROM 10) AS INTEGER)), 0) "
             + "FROM pedidos WHERE numero_pedido LIKE :prefijo || '%'", nativeQuery = true)
     int findMaxSecuenciaDelDia(@Param("prefijo") String prefijo);
+
+    @Query("""
+            SELECT COUNT(p) FROM Pedido p
+            WHERE p.estado IN :estados
+              AND p.fechaPedido BETWEEN :desde AND :hasta
+            """)
+    long contarPorEstadoEnRango(
+            @Param("estados") Collection<EstadoPedido> estados,
+            @Param("desde") OffsetDateTime desde,
+            @Param("hasta") OffsetDateTime hasta);
 }

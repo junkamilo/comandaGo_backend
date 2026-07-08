@@ -6,5 +6,6 @@ public enum MetodoPago {
     TRANSFERENCIA,
     NEQUI,
     DAVIPLATA,
+    PSE,
     OTRO
 }

@@ -1,7 +1,8 @@
 package com.comandago.api.pago.service;
 
-import com.comandago.api.pago.dto.request.PagoCreateRequest;
+import com.comandago.api.pago.dto.request.RegistrarPagoRequest;
 import com.comandago.api.pago.dto.response.PagoResponse;
+import com.comandago.api.pago.dto.response.ResumenPagoPedidoResponse;
 import com.comandago.api.shared.response.PageResponse;
 import org.springframework.data.domain.Pageable;
 
@@ -9,7 +10,15 @@ import java.util.List;
 
 public interface PagoService {
 
-    PagoResponse crear(PagoCreateRequest request);
+    ResumenPagoPedidoResponse resumenPorPedido(Long pedidoId);
+
+    PagoResponse registrar(RegistrarPagoRequest request);
+
+    PagoResponse confirmar(Long pagoId);
+
+    PagoResponse rechazar(Long pagoId);
+
+    PagoResponse reembolsar(Long pagoId, String notas);
 
     PagoResponse obtenerPorId(Long id);
 

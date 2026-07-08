@@ -12,12 +12,10 @@ import java.math.BigDecimal;
 
 @Getter
 @Setter
-public class PagoCreateRequest {
+public class RegistrarPagoRequest {
 
     @NotNull(message = "El pedido es obligatorio")
     private Long pedidoId;
-
-    private Long usuarioId;
 
     @NotNull(message = "El método de pago es obligatorio")
     private MetodoPago metodo;
@@ -27,6 +25,19 @@ public class PagoCreateRequest {
     @Digits(integer = 10, fraction = 2, message = "El monto tiene formato inválido")
     private BigDecimal monto;
 
-    @Size(max = 100, message = "La referencia no puede superar 100 caracteres")
+    @DecimalMin(value = "0.0", message = "La propina no puede ser negativa")
+    @Digits(integer = 10, fraction = 2, message = "La propina tiene formato inválido")
+    private BigDecimal propina;
+
+    @DecimalMin(value = "0.0", message = "El monto recibido no puede ser negativo")
+    @Digits(integer = 10, fraction = 2, message = "El monto recibido tiene formato inválido")
+    private BigDecimal montoRecibido;
+
+    @Size(max = 150, message = "La referencia no puede superar 150 caracteres")
     private String referencia;
+
+    @Size(max = 100, message = "El proveedor no puede superar 100 caracteres")
+    private String proveedorId;
+
+    private String notas;
 }

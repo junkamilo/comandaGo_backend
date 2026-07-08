@@ -3,6 +3,8 @@ package com.comandago.api.pedido.service;
 import com.comandago.api.pedido.dto.request.PedidoCreateRequest;
 import com.comandago.api.pedido.dto.request.PedidoEstadoRequest;
 import com.comandago.api.pedido.dto.request.PedidoUpdateRequest;
+import com.comandago.api.pedido.dto.request.AgregarDetallesRequest;
+import com.comandago.api.pedido.dto.request.CancelarDetallesRequest;
 import com.comandago.api.pedido.dto.response.PedidoResponse;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.enums.OrigenPedido;
@@ -32,4 +34,10 @@ public interface PedidoService {
     PedidoResponse actualizarEstado(Long id, PedidoEstadoRequest request);
 
     PedidoResponse cancelar(Long id);
+
+    PedidoResponse cancelarDetalles(Long pedidoId, CancelarDetallesRequest request);
+
+    PedidoResponse agregarDetalles(Long pedidoId, AgregarDetallesRequest request);
+
+    PedidoResponse entregarCompleto(Long pedidoId);
 }

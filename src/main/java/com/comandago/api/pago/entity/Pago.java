@@ -1,5 +1,6 @@
 package com.comandago.api.pago.entity;
 
+import com.comandago.api.pago.enums.EstadoTransaccionPago;
 import com.comandago.api.pago.enums.MetodoPago;
 import com.comandago.api.pedido.entity.Pedido;
 import com.comandago.api.usuario.entity.Usuario;
@@ -14,11 +15,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -28,8 +28,6 @@ import java.time.OffsetDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class Pago {
 
     @Id
@@ -48,12 +46,32 @@ public class Pago {
     @Column(nullable = false, length = 30)
     private MetodoPago metodo;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private EstadoTransaccionPago estado = EstadoTransaccionPago.COMPLETADO;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal monto;
 
-    @Column(length = 100)
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal propina = BigDecimal.ZERO;
+
+    @Column(name = "monto_recibido", precision = 12, scale = 2)
+    private BigDecimal montoRecibido;
+
+    @Column(insertable = false, updatable = false, precision = 12, scale = 2)
+    private BigDecimal vuelto;
+
+    @Column(length = 150)
     private String referencia;
 
-    @Column(name = "fecha_pago", nullable = false, insertable = false, updatable = false)
+    @Column(name = "proveedor_id", length = 100)
+    private String proveedorId;
+
+    @Column(columnDefinition = "TEXT")
+    private String notas;
+
+    @CreationTimestamp
+    @Column(name = "fecha_pago", updatable = false)
     private OffsetDateTime fechaPago;
 }

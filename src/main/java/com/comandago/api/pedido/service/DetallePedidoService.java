@@ -4,10 +4,12 @@ import com.comandago.api.pedido.dto.mapper.PedidoMapper;
 import com.comandago.api.pedido.dto.request.DetalleEstadoRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoUpdateRequest;
+import com.comandago.api.pedido.dto.request.ReemplazarDetalleRequest;
 import com.comandago.api.pedido.dto.response.DetallePedidoResponse;
+import com.comandago.api.pedido.dto.response.PedidoResponse;
 import com.comandago.api.pedido.entity.DetallePedido;
 import com.comandago.api.pedido.entity.Pedido;
-import com.comandago.api.pedido.enums.EstadoPedido;
+import com.comandago.api.pedido.enums.EstadoDetalle;
 import com.comandago.api.pedido.repository.DetallePedidoRepository;
 import com.comandago.api.pedido.repository.PedidoRepository;
 import com.comandago.api.producto.entity.Producto;
@@ -25,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.validarCancelable;
+
 @Service
 @RequiredArgsConstructor
 public class DetallePedidoService {
@@ -37,23 +41,29 @@ public class DetallePedidoService {
     private final PrecioProductoResolver precioProductoResolver;
     private final PromocionService promocionService;
     private final EntityManager entityManager;
+    private final PedidoDetalleEstadoPromoter estadoPromoter;
+
+    @Transactional
+    public DetallePedidoResponse entregar(Long pedidoId, Long detalleId) {
+        Pedido pedido = pedidoRepository.findByIdWithDetalles(pedidoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + pedidoId));
+        PedidoDetalleEdicionRules.validarPedidoEditable(pedido);
+        DetallePedido detalle = buscarDetalle(pedidoId, detalleId);
+        DetalleEstadoTransition.validarEntrega(detalle.getEstado());
+        detalle.setEstado(EstadoDetalle.ENTREGADO);
+        detallePedidoRepository.save(detalle);
+
+        Pedido pedidoActualizado = pedidoRepository.findByIdWithDetalles(pedidoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + pedidoId));
+        estadoPromoter.aplicarPromocionPorEstadoDetalles(pedidoActualizado);
+
+        return pedidoMapper.toDetalleResponse(detalle);
+    }
 
     @Transactional
     public DetallePedidoResponse agregar(Long pedidoId, DetallePedidoItemRequest request) {
         Pedido pedido = buscarPedidoEditable(pedidoId);
-        Producto producto = buscarProductoDisponible(request.getProductoId());
-        ResultadoPrecioLinea precio = precioProductoResolver.resolver(
-                producto, request.getCantidad(), OffsetDateTime.now());
-        precio.promocionId().ifPresent(promocionService::incrementarUso);
-
-        DetallePedido detalle = DetallePedido.builder()
-                .pedido(pedido)
-                .producto(producto)
-                .nombreProducto(producto.getNombre())
-                .cantidad(request.getCantidad())
-                .precioUnitario(precio.precioUnitario())
-                .notasPreparacion(request.getNotasPreparacion())
-                .build();
+        DetallePedido detalle = crearDetalleDesdeProducto(pedido, request);
         pedido.getDetalles().add(detalle);
         pedidoRepository.save(pedido);
         entityManager.flush();
@@ -74,7 +84,8 @@ public class DetallePedidoService {
     public DetallePedidoResponse actualizar(Long pedidoId, Long detalleId, DetallePedidoUpdateRequest request) {
         validarAlMenosUnCampo(request);
         DetallePedido detalle = buscarDetalle(pedidoId, detalleId);
-        validarPedidoEditable(detalle.getPedido());
+        PedidoDetalleEdicionRules.validarPedidoEditable(detalle.getPedido());
+        validarCancelable(detalle);
         if (request.getCantidad() != null) {
             detalle.setCantidad(request.getCantidad());
             ResultadoPrecioLinea precio = precioProductoResolver.resolver(
@@ -94,25 +105,42 @@ public class DetallePedidoService {
     @Transactional
     public DetallePedidoResponse actualizarEstado(Long pedidoId, Long detalleId, DetalleEstadoRequest request) {
         DetallePedido detalle = buscarDetalle(pedidoId, detalleId);
+        DetalleEstadoTransition.validarCocina(detalle.getEstado(), request.getEstado());
         detalle.setEstado(request.getEstado());
         detallePedidoRepository.save(detalle);
 
         Pedido pedido = pedidoRepository.findByIdWithDetalles(pedidoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + pedidoId));
-        if (PedidoDetalleEstadoRules.debePromoverPedidoAListo(pedido)) {
-            pedido.setEstado(EstadoPedido.LISTO);
-            pedidoRepository.save(pedido);
-        }
+        estadoPromoter.aplicarPromocionPorEstadoDetalles(pedido);
 
         return pedidoMapper.toDetalleResponse(detalle);
     }
 
     @Transactional
+    public PedidoResponse reemplazar(Long pedidoId, Long detalleId, ReemplazarDetalleRequest request) {
+        Pedido pedido = buscarPedidoEditable(pedidoId);
+        DetallePedido detalleViejo = buscarDetalle(pedidoId, detalleId);
+        validarCancelable(detalleViejo);
+        detalleViejo.setEstado(EstadoDetalle.CANCELADO);
+
+        DetallePedido detalleNuevo = crearDetalleDesdeProducto(
+                pedido,
+                mapearItemRequest(request));
+        pedido.getDetalles().add(detalleNuevo);
+        pedidoRepository.save(pedido);
+        entityManager.flush();
+        entityManager.refresh(pedido);
+        totalesCalculator.aplicarImpuestos(pedido);
+        return pedidoMapper.toResponse(pedido);
+    }
+
+    @Transactional
     public void eliminar(Long pedidoId, Long detalleId) {
         DetallePedido detalle = buscarDetalle(pedidoId, detalleId);
-        validarPedidoEditable(detalle.getPedido());
-        detalle.getPedido().getDetalles().remove(detalle);
-        detallePedidoRepository.delete(detalle);
+        PedidoDetalleEdicionRules.validarPedidoEditable(detalle.getPedido());
+        validarCancelable(detalle);
+        detalle.setEstado(EstadoDetalle.CANCELADO);
+        detallePedidoRepository.save(detalle);
         entityManager.flush();
         entityManager.refresh(detalle.getPedido());
         totalesCalculator.aplicarImpuestos(detalle.getPedido());
@@ -121,14 +149,8 @@ public class DetallePedidoService {
     private Pedido buscarPedidoEditable(Long pedidoId) {
         Pedido pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + pedidoId));
-        validarPedidoEditable(pedido);
+        PedidoDetalleEdicionRules.validarPedidoEditable(pedido);
         return pedido;
-    }
-
-    private void validarPedidoEditable(Pedido pedido) {
-        if (pedido.getEstado() != EstadoPedido.POR_CONFIRMAR) {
-            throw new BusinessException("Solo se pueden modificar detalles de pedidos en estado POR_CONFIRMAR");
-        }
     }
 
     private void validarPedidoExiste(Long pedidoId) {
@@ -155,5 +177,29 @@ public class DetallePedidoService {
         if (request.getCantidad() == null && request.getNotasPreparacion() == null) {
             throw new BusinessException("Debe enviar al menos un campo para actualizar");
         }
+    }
+
+    private DetallePedidoItemRequest mapearItemRequest(ReemplazarDetalleRequest request) {
+        DetallePedidoItemRequest item = new DetallePedidoItemRequest();
+        item.setProductoId(request.getNuevoProductoId());
+        item.setCantidad(request.getCantidad());
+        item.setNotasPreparacion(request.getNotasPreparacion());
+        return item;
+    }
+
+    private DetallePedido crearDetalleDesdeProducto(Pedido pedido, DetallePedidoItemRequest request) {
+        Producto producto = buscarProductoDisponible(request.getProductoId());
+        ResultadoPrecioLinea precio = precioProductoResolver.resolver(
+                producto, request.getCantidad(), OffsetDateTime.now());
+        precio.promocionId().ifPresent(promocionService::incrementarUso);
+
+        return DetallePedido.builder()
+                .pedido(pedido)
+                .producto(producto)
+                .nombreProducto(producto.getNombre())
+                .cantidad(request.getCantidad())
+                .precioUnitario(precio.precioUnitario())
+                .notasPreparacion(request.getNotasPreparacion())
+                .build();
     }
 }

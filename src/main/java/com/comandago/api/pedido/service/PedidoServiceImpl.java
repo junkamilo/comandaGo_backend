@@ -3,6 +3,8 @@ package com.comandago.api.pedido.service;
 import com.comandago.api.mesa.entity.Mesa;
 import com.comandago.api.mesa.repository.MesaRepository;
 import com.comandago.api.pedido.dto.mapper.PedidoMapper;
+import com.comandago.api.pedido.dto.request.AgregarDetallesRequest;
+import com.comandago.api.pedido.dto.request.CancelarDetallesRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.PedidoCreateRequest;
 import com.comandago.api.pedido.dto.request.PedidoEstadoRequest;
@@ -11,6 +13,7 @@ import com.comandago.api.pedido.dto.response.PedidoResponse;
 import com.comandago.api.pedido.entity.DetallePedido;
 import com.comandago.api.pedido.entity.Pedido;
 import com.comandago.api.pedido.enums.EstadoDetalle;
+import com.comandago.api.pedido.enums.EstadoPago;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.enums.OrigenPedido;
 import com.comandago.api.pedido.repository.PedidoRepository;
@@ -36,6 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.buscarDetalle;
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.todosDetallesCancelados;
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.validarCancelable;
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.validarPedidoCancelableCompleto;
+import static com.comandago.api.pedido.service.PedidoDetalleEdicionRules.validarPedidoEditable;
 
 @Service
 @RequiredArgsConstructor
@@ -126,8 +135,8 @@ public class PedidoServiceImpl implements PedidoService {
     @Override
     @Transactional(readOnly = true)
     public List<PedidoResponse> listarPorMesa(Long mesaId) {
-        return pedidoRepository.findByMesaIdAndEstadoInOrderByFechaPedidoAsc(
-                        mesaId, PedidoMesaCoordinator.ESTADOS_ACTIVOS)
+        return pedidoRepository.findCuentasPendientesPorMesa(
+                        mesaId, EstadoPedido.CANCELADO, EstadoPago.PAGADO)
                 .stream()
                 .map(pedidoMapper::toResponse)
                 .toList();
@@ -166,14 +175,35 @@ public class PedidoServiceImpl implements PedidoService {
     @Override
     @Transactional
     public PedidoResponse actualizarEstado(Long id, PedidoEstadoRequest request) {
+        if (request.getEstado() == EstadoPedido.ENTREGADO) {
+            return entregarCompleto(id);
+        }
         Pedido pedido = buscarPorId(id);
         PedidoEstadoTransition.validar(pedido.getEstado(), request.getEstado());
         pedido.setEstado(request.getEstado());
         Pedido guardado = pedidoRepository.save(pedido);
-        if (request.getEstado() == EstadoPedido.ENTREGADO || request.getEstado() == EstadoPedido.CANCELADO) {
+        if (request.getEstado() == EstadoPedido.CANCELADO) {
             mesaCoordinator.liberarMesaSiCorresponde(guardado);
         }
         return pedidoMapper.toResponse(guardado);
+    }
+
+    @Override
+    @Transactional
+    public PedidoResponse entregarCompleto(Long pedidoId) {
+        Pedido pedido = recargarConDetalles(pedidoId);
+        validarPedidoEditable(pedido);
+        if (!PedidoDetalleEstadoRules.todosActivosListosParaEntregar(pedido)) {
+            throw new BusinessException(
+                    "No se puede entregar el pedido completo: todos los platos activos deben estar listos");
+        }
+        pedido.getDetalles().stream()
+                .filter(d -> d.getEstado() == EstadoDetalle.LISTO)
+                .forEach(d -> d.setEstado(EstadoDetalle.ENTREGADO));
+        PedidoEstadoTransition.validar(pedido.getEstado(), EstadoPedido.ENTREGADO);
+        pedido.setEstado(EstadoPedido.ENTREGADO);
+        Pedido guardado = pedidoRepository.save(pedido);
+        return pedidoMapper.toResponse(recargarConDetalles(guardado.getId()));
     }
 
     @Override
@@ -183,11 +213,58 @@ public class PedidoServiceImpl implements PedidoService {
         if (!PedidoEstadoTransition.puedeCancelar(pedido.getEstado())) {
             throw new BusinessException("No se puede cancelar un pedido entregado o ya cancelado");
         }
+        validarPedidoCancelableCompleto(pedido);
         pedido.setEstado(EstadoPedido.CANCELADO);
-        pedido.getDetalles().forEach(d -> d.setEstado(EstadoDetalle.CANCELADO));
+        pedido.getDetalles().stream()
+                .filter(d -> d.getEstado() == EstadoDetalle.PENDIENTE)
+                .forEach(d -> d.setEstado(EstadoDetalle.CANCELADO));
         Pedido guardado = pedidoRepository.save(pedido);
+        entityManager.flush();
+        entityManager.refresh(guardado);
+        totalesCalculator.aplicarImpuestos(guardado);
         mesaCoordinator.liberarMesaSiCorresponde(guardado);
-        return pedidoMapper.toResponse(guardado);
+        return pedidoMapper.toResponse(recargarConDetalles(guardado.getId()));
+    }
+
+    @Override
+    @Transactional
+    public PedidoResponse cancelarDetalles(Long pedidoId, CancelarDetallesRequest request) {
+        Pedido pedido = recargarConDetalles(pedidoId);
+        validarPedidoEditable(pedido);
+
+        for (Long detalleId : request.getDetalleIds()) {
+            DetallePedido detalle = buscarDetalle(pedido, detalleId);
+            validarCancelable(detalle);
+            detalle.setEstado(EstadoDetalle.CANCELADO);
+        }
+
+        if (todosDetallesCancelados(pedido)) {
+            pedido.setEstado(EstadoPedido.CANCELADO);
+            mesaCoordinator.liberarMesaSiCorresponde(pedido);
+        }
+
+        Pedido guardado = pedidoRepository.save(pedido);
+        entityManager.flush();
+        entityManager.refresh(guardado);
+        totalesCalculator.aplicarImpuestos(guardado);
+        return pedidoMapper.toResponse(recargarConDetalles(guardado.getId()));
+    }
+
+    @Override
+    @Transactional
+    public PedidoResponse agregarDetalles(Long pedidoId, AgregarDetallesRequest request) {
+        Pedido pedido = recargarConDetalles(pedidoId);
+        validarPedidoEditable(pedido);
+
+        for (DetallePedidoItemRequest detalleRequest : request.getDetalles()) {
+            pedido.getDetalles().add(crearDetalle(pedido, detalleRequest));
+        }
+
+        Pedido guardado = pedidoRepository.save(pedido);
+        entityManager.flush();
+        entityManager.refresh(guardado);
+        totalesCalculator.aplicarImpuestos(guardado);
+        return pedidoMapper.toResponse(recargarConDetalles(guardado.getId()));
     }
 
     private DetallePedido crearDetalle(Pedido pedido, DetallePedidoItemRequest item) {

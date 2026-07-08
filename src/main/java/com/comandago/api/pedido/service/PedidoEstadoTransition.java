@@ -10,7 +10,7 @@ public final class PedidoEstadoTransition {
 
     private static final Map<EstadoPedido, Set<EstadoPedido>> TRANSICIONES = Map.of(
             EstadoPedido.POR_CONFIRMAR, Set.of(EstadoPedido.EN_PREPARACION, EstadoPedido.CANCELADO),
-            EstadoPedido.EN_PREPARACION, Set.of(EstadoPedido.LISTO, EstadoPedido.CANCELADO),
+            EstadoPedido.EN_PREPARACION, Set.of(EstadoPedido.LISTO, EstadoPedido.ENTREGADO, EstadoPedido.CANCELADO),
             EstadoPedido.LISTO, Set.of(EstadoPedido.EN_CAMINO, EstadoPedido.ENTREGADO, EstadoPedido.CANCELADO),
             EstadoPedido.EN_CAMINO, Set.of(EstadoPedido.ENTREGADO, EstadoPedido.CANCELADO),
             EstadoPedido.ENTREGADO, Set.of(),

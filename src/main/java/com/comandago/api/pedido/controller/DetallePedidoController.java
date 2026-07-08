@@ -3,7 +3,9 @@ package com.comandago.api.pedido.controller;
 import com.comandago.api.pedido.dto.request.DetalleEstadoRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoItemRequest;
 import com.comandago.api.pedido.dto.request.DetallePedidoUpdateRequest;
+import com.comandago.api.pedido.dto.request.ReemplazarDetalleRequest;
 import com.comandago.api.pedido.dto.response.DetallePedidoResponse;
+import com.comandago.api.pedido.dto.response.PedidoResponse;
 import com.comandago.api.pedido.service.DetallePedidoService;
 import com.comandago.api.shared.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -59,6 +61,22 @@ public class DetallePedidoController {
             @PathVariable @Positive Long id,
             @Valid @RequestBody DetalleEstadoRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(detallePedidoService.actualizarEstado(pedidoId, id, request)));
+    }
+
+    @PatchMapping("/{id}/entregar")
+    public ResponseEntity<ApiResponse<DetallePedidoResponse>> entregar(
+            @PathVariable @Positive Long pedidoId,
+            @PathVariable @Positive Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Plato entregado", detallePedidoService.entregar(pedidoId, id)));
+    }
+
+    @PutMapping("/{id}/reemplazar")
+    public ResponseEntity<ApiResponse<PedidoResponse>> reemplazar(
+            @PathVariable @Positive Long pedidoId,
+            @PathVariable @Positive Long id,
+            @Valid @RequestBody ReemplazarDetalleRequest request) {
+        return ResponseEntity.ok(
+                ApiResponse.ok("Producto reemplazado", detallePedidoService.reemplazar(pedidoId, id, request)));
     }
 
     @DeleteMapping("/{id}")
