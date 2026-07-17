@@ -5,6 +5,7 @@ import com.comandago.api.pago.enums.MetodoPago;
 import com.comandago.api.pedido.entity.Pedido;
 import com.comandago.api.pedido.enums.EstadoPago;
 import com.comandago.api.pedido.enums.EstadoPedido;
+import com.comandago.api.pedido.service.PedidoDetalleEstadoRules;
 import com.comandago.api.shared.exception.BusinessException;
 
 import java.math.BigDecimal;
@@ -20,6 +21,10 @@ public final class PagoReglas {
         }
         if (pedido.getEstadoPago() == EstadoPago.PAGADO) {
             throw new BusinessException("Este pedido ya está completamente pagado");
+        }
+        if (!PedidoDetalleEstadoRules.todosActivosEntregados(pedido)) {
+            throw new BusinessException(
+                    "Solo se puede cobrar cuando todos los productos del pedido están entregados");
         }
     }
 

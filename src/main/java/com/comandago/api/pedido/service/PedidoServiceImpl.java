@@ -60,6 +60,7 @@ public class PedidoServiceImpl implements PedidoService {
     private final PedidoMesaCoordinator mesaCoordinator;
     private final PrecioProductoResolver precioProductoResolver;
     private final PromocionService promocionService;
+    private final DetalleComposicionHelper detalleComposicionHelper;
     private final EntityManager entityManager;
 
     @Override
@@ -268,23 +269,21 @@ public class PedidoServiceImpl implements PedidoService {
     }
 
     private DetallePedido crearDetalle(Pedido pedido, DetallePedidoItemRequest item) {
-        Producto producto = productoRepository.findById(item.getProductoId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Producto no encontrado con id: " + item.getProductoId()));
-        if (!Boolean.TRUE.equals(producto.getActivo()) || !Boolean.TRUE.equals(producto.getDisponible())) {
-            throw new BusinessException("El producto " + producto.getNombre() + " no está disponible");
-        }
+        Producto producto = detalleComposicionHelper.cargarProductoParaPedido(item.getProductoId());
         ResultadoPrecioLinea precio = precioProductoResolver.resolver(
                 producto, item.getCantidad(), OffsetDateTime.now());
         precio.promocionId().ifPresent(promocionService::incrementarUso);
+
+        DetalleComposicionHelper.ResultadoLineaCompuesta linea =
+                detalleComposicionHelper.resolverLinea(producto, item, precio.precioUnitario());
 
         return DetallePedido.builder()
                 .pedido(pedido)
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(item.getCantidad())
-                .precioUnitario(precio.precioUnitario())
-                .notasPreparacion(item.getNotasPreparacion())
+                .precioUnitario(linea.precioUnitario())
+                .notasPreparacion(linea.notasPreparacion())
                 .build();
     }
 

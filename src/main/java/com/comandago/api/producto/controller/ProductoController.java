@@ -4,7 +4,9 @@ import com.comandago.api.producto.dto.request.ProductoCreateRequest;
 import com.comandago.api.producto.dto.request.ProductoDisponibilidadRequest;
 import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
+import com.comandago.api.producto.dto.response.PersonalizacionProductoResponse;
 import com.comandago.api.producto.dto.response.ProductoResponse;
+import com.comandago.api.producto.enums.TipoProducto;
 import com.comandago.api.producto.service.ProductoService;
 import com.comandago.api.shared.response.ApiResponse;
 import com.comandago.api.shared.response.PageResponse;
@@ -51,6 +53,11 @@ public class ProductoController {
         return ResponseEntity.ok(ApiResponse.ok(productoService.listarMenu(categoriaId)));
     }
 
+    @GetMapping("/insumos")
+    public ResponseEntity<ApiResponse<List<ProductoResponse>>> listarInsumos() {
+        return ResponseEntity.ok(ApiResponse.ok(productoService.listarInsumos()));
+    }
+
     @GetMapping("/promociones")
     public ResponseEntity<ApiResponse<List<ProductoResponse>>> promociones() {
         return ResponseEntity.ok(ApiResponse.ok(productoService.listarPromociones()));
@@ -67,9 +74,10 @@ public class ProductoController {
             @RequestParam(required = false) Boolean activo,
             @RequestParam(required = false) Boolean disponible,
             @RequestParam(required = false) Boolean esPromocion,
+            @RequestParam(required = false) TipoProducto tipo,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(ApiResponse.ok(productoService.listar(categoriaId, activo, disponible, esPromocion,
+        return ResponseEntity.ok(ApiResponse.ok(productoService.listar(categoriaId, activo, disponible, esPromocion, tipo,
                 PageRequest.of(page, size, Sort.by("orden").ascending()))));
     }
 
@@ -82,6 +90,12 @@ public class ProductoController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductoResponse>> obtener(@PathVariable @Positive Long id) {
         return ResponseEntity.ok(ApiResponse.ok(productoService.obtenerPorId(id)));
+    }
+
+    @GetMapping("/{id}/personalizacion")
+    public ResponseEntity<ApiResponse<PersonalizacionProductoResponse>> personalizacion(
+            @PathVariable @Positive Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(productoService.obtenerPersonalizacion(id)));
     }
 
     @PutMapping("/{id}")

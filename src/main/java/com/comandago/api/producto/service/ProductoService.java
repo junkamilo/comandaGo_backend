@@ -3,7 +3,9 @@ package com.comandago.api.producto.service;
 import com.comandago.api.producto.dto.request.ProductoCreateRequest;
 import com.comandago.api.producto.dto.request.ProductoReordenarRequest;
 import com.comandago.api.producto.dto.request.ProductoUpdateRequest;
+import com.comandago.api.producto.dto.response.PersonalizacionProductoResponse;
 import com.comandago.api.producto.dto.response.ProductoResponse;
+import com.comandago.api.producto.enums.TipoProducto;
 import com.comandago.api.shared.response.PageResponse;
 import org.springframework.data.domain.Pageable;
 
@@ -15,10 +17,14 @@ public interface ProductoService {
 
     ProductoResponse obtenerPorId(Long id);
 
+    PersonalizacionProductoResponse obtenerPersonalizacion(Long id);
+
     PageResponse<ProductoResponse> listar(Long categoriaId, Boolean activo, Boolean disponible,
-                                          Boolean esPromocion, Pageable pageable);
+                                          Boolean esPromocion, TipoProducto tipo, Pageable pageable);
 
     List<ProductoResponse> listarMenu(Long categoriaId);
+
+    List<ProductoResponse> listarInsumos();
 
     List<ProductoResponse> listarPromociones();
 

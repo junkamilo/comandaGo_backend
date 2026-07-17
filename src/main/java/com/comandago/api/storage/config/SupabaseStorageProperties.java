@@ -47,16 +47,22 @@ public class SupabaseStorageProperties {
     }
 
     public String getBucketName(StorageBucket bucket) {
-        return switch (bucket) {
-            case CATEGORIAS -> storage.bucketCategorias;
-            case PRODUCTOS -> storage.bucketProductos;
-        };
+        if (bucket == StorageBucket.CATEGORIAS) {
+            return storage.bucketCategorias;
+        }
+        if (bucket == StorageBucket.PRODUCTOS) {
+            return storage.bucketProductos;
+        }
+        throw new IllegalArgumentException("Bucket no soportado: " + bucket);
     }
 
     public String getPublicBaseUrl(StorageBucket bucket) {
-        return switch (bucket) {
-            case CATEGORIAS -> storage.publicBaseUrlCategorias;
-            case PRODUCTOS -> storage.publicBaseUrlProductos;
-        };
+        if (bucket == StorageBucket.CATEGORIAS) {
+            return storage.publicBaseUrlCategorias;
+        }
+        if (bucket == StorageBucket.PRODUCTOS) {
+            return storage.publicBaseUrlProductos;
+        }
+        throw new IllegalArgumentException("Bucket no soportado: " + bucket);
     }
 }

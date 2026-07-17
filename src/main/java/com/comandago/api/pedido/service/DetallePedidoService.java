@@ -40,6 +40,7 @@ public class DetallePedidoService {
     private final PedidoTotalesCalculator totalesCalculator;
     private final PrecioProductoResolver precioProductoResolver;
     private final PromocionService promocionService;
+    private final DetalleComposicionHelper detalleComposicionHelper;
     private final EntityManager entityManager;
     private final PedidoDetalleEstadoPromoter estadoPromoter;
 
@@ -188,18 +189,21 @@ public class DetallePedidoService {
     }
 
     private DetallePedido crearDetalleDesdeProducto(Pedido pedido, DetallePedidoItemRequest request) {
-        Producto producto = buscarProductoDisponible(request.getProductoId());
+        Producto producto = detalleComposicionHelper.cargarProductoParaPedido(request.getProductoId());
         ResultadoPrecioLinea precio = precioProductoResolver.resolver(
                 producto, request.getCantidad(), OffsetDateTime.now());
         precio.promocionId().ifPresent(promocionService::incrementarUso);
+
+        DetalleComposicionHelper.ResultadoLineaCompuesta linea =
+                detalleComposicionHelper.resolverLinea(producto, request, precio.precioUnitario());
 
         return DetallePedido.builder()
                 .pedido(pedido)
                 .producto(producto)
                 .nombreProducto(producto.getNombre())
                 .cantidad(request.getCantidad())
-                .precioUnitario(precio.precioUnitario())
-                .notasPreparacion(request.getNotasPreparacion())
+                .precioUnitario(linea.precioUnitario())
+                .notasPreparacion(linea.notasPreparacion())
                 .build();
     }
 }

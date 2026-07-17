@@ -192,7 +192,7 @@ public class PagoServiceImpl implements PagoService {
     }
 
     private Pedido buscarPedido(Long id) {
-        return pedidoRepository.findById(id)
+        return pedidoRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con id: " + id));
     }
 

@@ -1,20 +1,20 @@
 package com.comandago.api.pago.service;
 
+import com.comandago.api.pago.dto.mapper.PagoMapper;
 import com.comandago.api.pago.dto.request.RegistrarPagoRequest;
 import com.comandago.api.pago.dto.response.PagoResponse;
-import com.comandago.api.pago.dto.response.ResumenPagoPedidoResponse;
 import com.comandago.api.pago.entity.Pago;
 import com.comandago.api.pago.enums.EstadoTransaccionPago;
 import com.comandago.api.pago.enums.MetodoPago;
 import com.comandago.api.pago.repository.PagoRepository;
-import com.comandago.api.pago.dto.mapper.PagoMapper;
+import com.comandago.api.pedido.entity.DetallePedido;
 import com.comandago.api.pedido.entity.Pedido;
+import com.comandago.api.pedido.enums.EstadoDetalle;
 import com.comandago.api.pedido.enums.EstadoPago;
 import com.comandago.api.pedido.enums.EstadoPedido;
 import com.comandago.api.pedido.repository.PedidoRepository;
 import com.comandago.api.pedido.service.PedidoMesaCoordinator;
 import com.comandago.api.shared.exception.BusinessException;
-import com.comandago.api.shared.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,10 +59,10 @@ class PagoServiceImplTest {
 
     @Test
     void registrar_pagoParcial_dejaPedidoEnParcial() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         RegistrarPagoRequest request = requestEfectivo(BigDecimal.valueOf(30000), BigDecimal.valueOf(50000));
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
         when(pagoRepository.totalPagadoPorPedido(1L)).thenReturn(BigDecimal.ZERO, BigDecimal.valueOf(30000));
         when(pagoRepository.save(any(Pago.class))).thenAnswer(inv -> {
             Pago p = inv.getArgument(0);
@@ -83,10 +84,10 @@ class PagoServiceImplTest {
 
     @Test
     void registrar_pagoCompleto_marcaPagadoYLliberaMesa() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         RegistrarPagoRequest request = requestEfectivo(BigDecimal.valueOf(85000), BigDecimal.valueOf(100000));
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
         when(pagoRepository.totalPagadoPorPedido(1L)).thenReturn(BigDecimal.ZERO, BigDecimal.valueOf(85000));
         when(pagoRepository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
         when(pagoMapper.toResponse(any(Pago.class))).thenReturn(
@@ -102,10 +103,10 @@ class PagoServiceImplTest {
 
     @Test
     void registrar_sobrepago_lanzaBusinessException() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         RegistrarPagoRequest request = requestEfectivo(BigDecimal.valueOf(90000), BigDecimal.valueOf(100000));
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
         when(pagoRepository.totalPagadoPorPedido(1L)).thenReturn(BigDecimal.ZERO);
 
         assertThatThrownBy(() -> pagoService.registrar(request))
@@ -115,13 +116,13 @@ class PagoServiceImplTest {
 
     @Test
     void registrar_efectivoSinMontoRecibido_lanzaBusinessException() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         RegistrarPagoRequest request = new RegistrarPagoRequest();
         request.setPedidoId(1L);
         request.setMetodo(MetodoPago.EFECTIVO);
         request.setMonto(BigDecimal.valueOf(30000));
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
 
         assertThatThrownBy(() -> pagoService.registrar(request))
                 .isInstanceOf(BusinessException.class)
@@ -130,11 +131,11 @@ class PagoServiceImplTest {
 
     @Test
     void registrar_pedidoCancelado_lanzaBusinessException() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         pedido.setEstado(EstadoPedido.CANCELADO);
         RegistrarPagoRequest request = requestEfectivo(BigDecimal.valueOf(30000), BigDecimal.valueOf(50000));
 
-        when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
 
         assertThatThrownBy(() -> pagoService.registrar(request))
                 .isInstanceOf(BusinessException.class)
@@ -142,8 +143,22 @@ class PagoServiceImplTest {
     }
 
     @Test
+    void registrar_productosNoEntregados_lanzaBusinessException() {
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
+        pedido.getDetalles().get(0).setEstado(EstadoDetalle.PENDIENTE);
+        pedido.setEstado(EstadoPedido.EN_PREPARACION);
+        RegistrarPagoRequest request = requestEfectivo(BigDecimal.valueOf(30000), BigDecimal.valueOf(50000));
+
+        when(pedidoRepository.findByIdWithDetalles(1L)).thenReturn(Optional.of(pedido));
+
+        assertThatThrownBy(() -> pagoService.registrar(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("entregados");
+    }
+
+    @Test
     void confirmar_pagoNequi_actualizaEstadoPedido() {
-        Pedido pedido = pedidoListo(BigDecimal.valueOf(85000));
+        Pedido pedido = pedidoEntregado(BigDecimal.valueOf(85000));
         Pago pago = new Pago();
         pago.setId(10L);
         pago.setPedido(pedido);
@@ -164,13 +179,21 @@ class PagoServiceImplTest {
         assertThat(pedido.getEstadoPago()).isEqualTo(EstadoPago.PAGADO);
     }
 
-    private Pedido pedidoListo(BigDecimal total) {
+    private Pedido pedidoEntregado(BigDecimal total) {
         Pedido pedido = new Pedido();
         pedido.setId(1L);
         pedido.setNumeroPedido("P-1");
         pedido.setTotal(total);
         pedido.setEstado(EstadoPedido.ENTREGADO);
         pedido.setEstadoPago(EstadoPago.PENDIENTE);
+        DetallePedido detalle = new DetallePedido();
+        detalle.setId(1L);
+        detalle.setEstado(EstadoDetalle.ENTREGADO);
+        detalle.setNombreProducto("Producto");
+        detalle.setCantidad(1);
+        detalle.setPrecioUnitario(total);
+        pedido.setDetalles(new ArrayList<>());
+        pedido.getDetalles().add(detalle);
         return pedido;
     }
 

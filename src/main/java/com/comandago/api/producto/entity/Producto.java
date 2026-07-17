@@ -1,14 +1,21 @@
 package com.comandago.api.producto.entity;
 
 import com.comandago.api.categoria.entity.Categoria;
+import com.comandago.api.producto.enums.TipoProducto;
+import com.comandago.api.receta.entity.Receta;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,6 +25,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "productos")
@@ -32,8 +41,8 @@ public class Producto {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "categoria_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "categoria_id")
     private Categoria categoria;
 
     @Column(nullable = false, length = 150)
@@ -51,9 +60,6 @@ public class Producto {
     @Column(name = "imagen_url", length = 255)
     private String imagenUrl;
 
-    @Column(name = "tiempo_preparacion_min")
-    private Integer tiempoPreparacionMin;
-
     @Column(name = "es_promocion", nullable = false)
     @Builder.Default
     private Boolean esPromocion = false;
@@ -69,6 +75,21 @@ public class Producto {
     @Column(nullable = false)
     @Builder.Default
     private Integer orden = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private TipoProducto tipo = TipoProducto.NORMAL;
+
+    @OneToMany(mappedBy = "productoCompuesto", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("orden ASC")
+    @Builder.Default
+    @org.hibernate.annotations.BatchSize(size = 50)
+    private List<ProductoInsumo> composicion = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "receta_id")
+    private Receta receta;
 
     @Column(name = "fecha_creacion", insertable = false, updatable = false)
     private OffsetDateTime fechaCreacion;
